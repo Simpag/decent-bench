@@ -6,11 +6,11 @@ import decent_bench.utils.interoperability as iop
 from decent_bench.utils.array import Array
 
 if TYPE_CHECKING:
-    from decent_bench.costs import Cost
+    from decent_bench.costs import GradientCost
 
 
 def gradient_descent(
-    cost: "Cost",
+    cost: "GradientCost",
     x0: Array | None,
     *,
     step_size: float,
@@ -54,7 +54,7 @@ def gradient_descent(
 
 
 def accelerated_gradient_descent(
-    cost: "Cost",
+    cost: "GradientCost",
     x0: Array | None,
     *,
     max_iter: int,
@@ -115,7 +115,7 @@ def accelerated_gradient_descent(
     return x
 
 
-def proximal_solver(cost: "Cost", y: Array, rho: float) -> Array:
+def proximal_solver(cost: "GradientCost", y: Array, rho: float) -> Array:
     """
     Find the proximal at y using accelerated gradient descent.
 
@@ -125,13 +125,20 @@ def proximal_solver(cost: "Cost", y: Array, rho: float) -> Array:
 
     Raises:
         ValueError: if *cost*'s domain and *y* don't have the same shape, or if *rho* is not greater than 0
+        TypeError: if the result of cost addition is not a GradientCost
 
     """
     if cost.shape != iop.shape(y):
         raise ValueError("Cost function domain and y need to have the same shape")
     if rho <= 0:
         raise ValueError("Penalty term `rho` must be greater than 0")
+    from decent_bench.costs import GradientCost as GradientCostProtocol  # noqa: PLC0415
     from decent_bench.costs import QuadraticCost  # noqa: PLC0415
 
-    proximal_cost = QuadraticCost(A=iop.eye_like(y) / rho, b=-y / rho, c=float(iop.dot(y, y)) / (2 * rho)) + cost
+    proximal_cost_base = QuadraticCost(A=iop.eye_like(y) / rho, b=-y / rho, c=float(iop.dot(y, y)) / (2 * rho)) + cost
+    # Type narrowing: assert the result is a GradientCost
+    # (which it always will be for QuadraticCost + GradientCost)
+    if not isinstance(proximal_cost_base, GradientCostProtocol):
+        raise TypeError("Expected GradientCost from addition")
+    proximal_cost: GradientCost = proximal_cost_base
     return accelerated_gradient_descent(proximal_cost, y, max_iter=100, stop_tol=1e-10, max_tol=None)

@@ -4,7 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
 from logging.handlers import QueueListener
 from multiprocessing import Manager
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal, TypeGuard, TypeVar, get_args, get_origin
 
 from rich.status import Status
 
@@ -20,10 +20,53 @@ from decent_bench.utils import logger
 from decent_bench.utils.logger import LOGGER
 from decent_bench.utils.progress_bar import ProgressBarController
 
+if TYPE_CHECKING:
+    from decent_bench import costs
+
+
+def _check_algorithm_compatibility[CF: "costs.Cost"](
+    algorithm: Algorithm[Any], cost_sample: CF
+) -> TypeGuard[Algorithm[CF]]:
+    """
+    Runtime check to verify algorithm is compatible with cost type.
+
+    This checks if the cost_sample implements the required protocol for the algorithm.
+
+    Args:
+        algorithm: The algorithm to check
+        cost_sample: A sample cost function from the benchmark problem
+
+    Returns:
+        True if compatible
+
+    Raises:
+        TypeError: If the cost function doesn't implement required protocol
+
+    """
+    # Get the class's Generic base
+    for base in type(algorithm).__orig_bases__:  # type: ignore[attr-defined]
+        origin = get_origin(base)
+        if origin is Algorithm or (hasattr(base, "__origin__") and base.__origin__ is Algorithm):
+            type_args = get_args(base)
+            if type_args:
+                required_protocol = type_args[0]
+                # Check if cost_sample is an instance of the required protocol
+                if not isinstance(cost_sample, required_protocol):
+                    raise TypeError(
+                        f"Algorithm {algorithm.name} requires cost functions implementing "
+                        f"{required_protocol.__name__}, but benchmark problem provides "
+                        f"{type(cost_sample).__name__} which does not implement it. "
+                        f"The cost function must have the required methods."
+                    )
+    return True
+
+
+CF_contra = TypeVar("CF_contra", bound="costs.Cost", covariant=True)
+
 
 def benchmark(
-    algorithms: list[Algorithm],
-    benchmark_problem: BenchmarkProblem,
+    algorithms: list[Algorithm[CF_contra]],
+    benchmark_problem: BenchmarkProblem[CF_contra],
     plot_metrics: list[PlotMetric] = DEFAULT_PLOT_METRICS,
     table_metrics: list[TableMetric] = DEFAULT_TABLE_METRICS,
     table_fmt: Literal["grid", "latex"] = "grid",
@@ -63,7 +106,7 @@ def benchmark(
     prog_ctrl = ProgressBarController(manager, algorithms, n_trials)
     resulting_nw_states = _run_trials(algorithms, n_trials, nw_init_state, prog_ctrl, log_listener, max_processes)
     LOGGER.info("All trials complete")
-    resulting_agent_states: dict[Algorithm, list[list[AgentMetricsView]]] = {}
+    resulting_agent_states: dict[Algorithm[CF_contra], list[list[AgentMetricsView[CF_contra]]]] = {}
     for alg, networks in resulting_nw_states.items():
         resulting_agent_states[alg] = [[AgentMetricsView.from_agent(a) for a in nw.agents()] for nw in networks]
     with Status("Creating table"):
@@ -75,13 +118,13 @@ def benchmark(
 
 
 def _run_trials(  # noqa: PLR0917
-    algorithms: list[Algorithm],
+    algorithms: list[Algorithm[CF_contra]],
     n_trials: int,
-    nw_init_state: P2PNetwork,
+    nw_init_state: P2PNetwork[CF_contra],
     progress_bar_ctrl: ProgressBarController,
     log_listener: QueueListener,
     max_processes: int | None,
-) -> dict[Algorithm, list[P2PNetwork]]:
+) -> dict[Algorithm[CF_contra], list[P2PNetwork[CF_contra]]]:
     if max_processes == 1:
         return {alg: [_run_trial(alg, nw_init_state, progress_bar_ctrl) for _ in range(n_trials)] for alg in algorithms}
     with ProcessPoolExecutor(
@@ -96,10 +139,10 @@ def _run_trials(  # noqa: PLR0917
 
 
 def _run_trial(
-    algorithm: Algorithm,
-    nw_init_state: P2PNetwork,
+    algorithm: Algorithm[CF_contra],
+    nw_init_state: P2PNetwork[CF_contra],
     progress_bar_ctrl: ProgressBarController,
-) -> P2PNetwork:
+) -> P2PNetwork[CF_contra]:
     progress_bar_ctrl.start_progress_bar(algorithm)
     network = deepcopy(nw_init_state)
     with warnings.catch_warnings(action="error"):

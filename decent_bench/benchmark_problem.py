@@ -2,12 +2,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import reduce
 from operator import add
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import networkx as nx
 
 import decent_bench.centralized_algorithms as ca
-from decent_bench.costs import Cost, LinearRegressionCost, LogisticRegressionCost
 from decent_bench.datasets import SyntheticClassificationData
 from decent_bench.schemes import (
     AgentActivationScheme,
@@ -27,13 +26,18 @@ from decent_bench.utils.array import Array
 from decent_bench.utils.types import SupportedDevices, SupportedFrameworks
 
 if TYPE_CHECKING:
+    from decent_bench import costs
+
     AnyGraph = nx.Graph[Any]
 else:
     AnyGraph = nx.Graph
 
+# Use covariant TypeVar for BenchmarkProblem since it only provides costs (doesn't consume them)
+CF_contra = TypeVar("CF_contra", bound="costs.Cost", covariant=True)
+
 
 @dataclass(eq=False)
-class BenchmarkProblem:
+class BenchmarkProblem(Generic[CF_contra]):
     """
     Benchmark problem to run algorithms on, defining settings such as communication constraints and topology.
 
@@ -50,7 +54,7 @@ class BenchmarkProblem:
 
     network_structure: AnyGraph
     x_optimal: Array
-    costs: Sequence[Cost]
+    costs: Sequence[CF_contra]
     agent_activations: Sequence[AgentActivationScheme]
     message_compression: CompressionScheme
     message_noise: NoiseScheme
@@ -58,7 +62,7 @@ class BenchmarkProblem:
 
 
 def create_regression_problem(
-    cost_cls: type[LinearRegressionCost | LogisticRegressionCost],
+    cost_cls: "type[costs.LinearRegressionCost | costs.LogisticRegressionCost]",
     *,
     n_agents: int = 100,
     n_neighbors_per_agent: int = 3,
@@ -66,7 +70,7 @@ def create_regression_problem(
     compression: bool = False,
     noise: bool = False,
     drops: bool = False,
-) -> BenchmarkProblem:
+) -> "BenchmarkProblem[costs.LinearRegressionCost | costs.LogisticRegressionCost]":
     """
     Create out-of-the-box regression problems.
 
@@ -97,6 +101,7 @@ def create_regression_problem(
     message_compression = Quantization(n_significant_digits=4) if compression else NoCompression()
     message_noise = GaussianNoise(mean=0, sd=0.001) if noise else NoNoise()
     message_drop = UniformDropRate(drop_rate=0.5) if drops else NoDrops()
+
     return BenchmarkProblem(
         network_structure=network_structure,
         costs=costs,

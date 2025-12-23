@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -11,12 +13,16 @@ from decent_bench.schemes import CompressionScheme, DropScheme, NoiseScheme
 from decent_bench.utils.array import Array
 
 if TYPE_CHECKING:
-    AgentGraph = nx.Graph[Agent]
+    from typing import Any
+
+    from decent_bench import costs
+
+    AgentGraph = nx.Graph[Agent[Any]]
 else:
     AgentGraph = nx.Graph
 
 
-class P2PNetwork:
+class P2PNetwork[CF: "costs.Cost"]:
     """
     Peer-to-Peer Network of agents that communicate by sending and receiving messages.
 
@@ -35,7 +41,7 @@ class P2PNetwork:
         message_compression: CompressionScheme,
         message_drop: DropScheme,
     ):
-        self._graph = graph
+        self._graph: nx.Graph[Agent[CF]] = graph
         self._message_noise = message_noise
         self._message_compression = message_compression
         self._message_drop = message_drop
@@ -100,15 +106,15 @@ class P2PNetwork:
 
         return iop.to_array(A, agents[0].cost.framework, agents[0].cost.device)
 
-    def agents(self) -> list[Agent]:
+    def agents(self) -> list[Agent[CF]]:
         """Get all agents in the network."""
         return list(self._graph)
 
-    def neighbors(self, agent: Agent) -> list[Agent]:
+    def neighbors(self, agent: Agent[CF]) -> list[Agent[CF]]:
         """Get all neighbors of an agent."""
         return list(self._graph[agent])
 
-    def active_agents(self, iteration: int) -> list[Agent]:
+    def active_agents(self, iteration: int) -> list[Agent[CF]]:
         """
         Get all active agents.
 
@@ -117,7 +123,7 @@ class P2PNetwork:
         """
         return [a for a in self.agents() if a._activation.is_active(iteration)]  # noqa: SLF001
 
-    def send(self, sender: Agent, receiver: Agent, msg: Array) -> None:
+    def send(self, sender: Agent[CF], receiver: Agent[CF], msg: Array) -> None:
         """
         Send message to a neighbor.
 
@@ -137,7 +143,7 @@ class P2PNetwork:
         msg = self._message_noise.make_noise(msg)
         self._graph.edges[sender, receiver][str(receiver.id)] = msg
 
-    def broadcast(self, sender: Agent, msg: Array) -> None:
+    def broadcast(self, sender: Agent[CF], msg: Array) -> None:
         """
         Send message to all neighbors.
 
@@ -152,7 +158,7 @@ class P2PNetwork:
         for neighbor in self._graph.neighbors(sender):
             self.send(sender=sender, receiver=neighbor, msg=msg)
 
-    def receive(self, receiver: Agent, sender: Agent) -> None:
+    def receive(self, receiver: Agent[CF], sender: Agent[CF]) -> None:
         """
         Receive message from a neighbor.
 
@@ -165,7 +171,7 @@ class P2PNetwork:
             receiver._received_messages[sender] = msg  # noqa: SLF001
             self._graph.edges[sender, receiver][str(receiver.id)] = None
 
-    def receive_all(self, receiver: Agent) -> None:
+    def receive_all(self, receiver: Agent[CF]) -> None:
         """
         Receive messages from all neighbors.
 
@@ -176,7 +182,7 @@ class P2PNetwork:
             self.receive(receiver, neighbor)
 
 
-def create_distributed_network(problem: BenchmarkProblem) -> P2PNetwork:
+def create_distributed_network[CF: "costs.Cost"](problem: BenchmarkProblem[CF]) -> P2PNetwork[CF]:
     """
     Create a distributed network - a network with peer-to-peer communication only, no coordinator.
 

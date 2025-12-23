@@ -1,11 +1,17 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Generic, TypeVar
 
+from decent_bench import costs
 from decent_bench.networks import P2PNetwork
 from decent_bench.utils import interoperability as iop
 
+# Use contravariant TypeVar for Algorithm since algorithms with stricter requirements
+# should not be usable where more general requirements are expected
+CF_contra = TypeVar("CF_contra", bound="costs.Cost", contravariant=True)
 
-class Algorithm(ABC):
+
+class Algorithm(ABC, Generic[CF_contra]):  # noqa: UP046
     """Distributed algorithm - agents collaborate to solve an optimization problem using peer-to-peer communication."""
 
     @property
@@ -14,7 +20,7 @@ class Algorithm(ABC):
         """Name of the algorithm."""
 
     @abstractmethod
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[CF_contra]) -> None:
         """
         Run the algorithm.
 
@@ -25,7 +31,7 @@ class Algorithm(ABC):
 
 
 @dataclass(eq=False)
-class DGD(Algorithm):
+class DGD(Algorithm[costs.GradientCost]):
     r"""
     Distributed gradient descent characterized by the update step below.
 
@@ -45,7 +51,7 @@ class DGD(Algorithm):
     step_size: float
     name: str = "DGD"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -71,7 +77,7 @@ class DGD(Algorithm):
 
 
 @dataclass(eq=False)
-class ATC(Algorithm):
+class ATC(Algorithm[costs.GradientCost]):
     r"""
     Adapt-Then-Combine (ATC) distributed gradient descent characterized by the update below [r1]_.
 
@@ -97,7 +103,7 @@ class ATC(Algorithm):
     step_size: float
     name: str = "ATC"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -138,7 +144,7 @@ AdaptThenCombine = ATC  # alias
 
 
 @dataclass(eq=False)
-class SimpleGT(Algorithm):
+class SimpleGT(Algorithm[costs.GradientCost]):
     r"""
     Gradient tracking algorithm characterized by the update step below.
 
@@ -162,7 +168,7 @@ class SimpleGT(Algorithm):
     step_size: float
     name: str = "SimpleGT"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -195,7 +201,7 @@ SimpleGradientTracking = SimpleGT  # Alias
 
 
 @dataclass(eq=False)
-class ED(Algorithm):
+class ED(Algorithm[costs.GradientCost]):
     r"""
     Gradient tracking algorithm characterized by the update step below.
 
@@ -220,7 +226,7 @@ class ED(Algorithm):
     step_size: float
     name: str = "ED"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -258,7 +264,7 @@ ExactDiffusion = ED  # alias
 
 
 @dataclass(eq=False)
-class AugDGM(Algorithm):
+class AugDGM(Algorithm[costs.GradientCost]):
     r"""
     Aug-DGM [r2]_ or ATC-DIGing [r3]_ gradient tracking algorithm, characterized by the updates below.
 
@@ -290,7 +296,7 @@ class AugDGM(Algorithm):
     step_size: float
     name: str = "Aug-DGM"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -350,7 +356,7 @@ ATCDIGing = AugDGM  # alias
 
 
 @dataclass(eq=False)
-class WangElia(Algorithm):
+class WangElia(Algorithm[costs.GradientCost]):
     r"""
     Wang-Elia gradient tracking algorithm characterized by the updates below, see [r4]_ and [r5]_.
 
@@ -383,7 +389,7 @@ class WangElia(Algorithm):
     step_size: float
     name: str = "Wang-Elia"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -436,7 +442,7 @@ class WangElia(Algorithm):
 
 
 @dataclass(eq=False)
-class EXTRA(Algorithm):
+class EXTRA(Algorithm[costs.GradientCost]):
     r"""
     EXTRA [r6]_ gradient tracking algorithm characterized by the update steps below.
 
@@ -464,7 +470,7 @@ class EXTRA(Algorithm):
     step_size: float
     name: str = "EXTRA"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -519,7 +525,7 @@ class EXTRA(Algorithm):
 
 
 @dataclass(eq=False)
-class ATCTracking(Algorithm):
+class ATCTracking(Algorithm[costs.GradientCost]):
     r"""
     ATC-Tracking [r7]_, [r8]_, [r9]_ gradient tracking algorithm, characterized by the updates below.
 
@@ -555,7 +561,7 @@ class ATCTracking(Algorithm):
     step_size: float
     name: str = "ATC-Tracking"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -617,7 +623,7 @@ ATCT = ATCTracking  # alias
 
 
 @dataclass(eq=False)
-class NIDS(Algorithm):
+class NIDS(Algorithm[costs.GradientCost]):
     r"""
     NIDS [r10]_ gradient tracking algorithm characterized by the update steps below.
 
@@ -646,7 +652,7 @@ class NIDS(Algorithm):
     step_size: float
     name: str = "NIDS"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -695,7 +701,7 @@ class NIDS(Algorithm):
 
 
 @dataclass(eq=False)
-class ADMM(Algorithm):
+class ADMM(Algorithm[costs.GradientProximalCost]):
     r"""
     Distributed Alternating Direction Method of Multipliers characterized by the update step below.
 
@@ -708,7 +714,7 @@ class ADMM(Algorithm):
     where
     :math:`\mathbf{x}_{i, k}` is agent i's local optimization variable at iteration k,
     :math:`\operatorname{prox}` is the proximal operator described in :meth:`Cost.proximal()
-    <decent_bench.costs.Cost.proximal>`,
+    <decent_bench.costs.ProximalCost.proximal>`,
     :math:`\rho > 0` is the Lagrangian penalty parameter,
     :math:`N_i` is the number of neighbors of i,
     :math:`f_i` is i's local cost function,
@@ -722,7 +728,7 @@ class ADMM(Algorithm):
     alpha: float
     name: str = "ADMM"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientProximalCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -760,7 +766,7 @@ class ADMM(Algorithm):
 
 
 @dataclass(eq=False)
-class ATG(Algorithm):
+class ATG(Algorithm[costs.GradientCost]):
     r"""
     ADMM-Tracking Gradient (ATG) [r11]_ characterized by the update steps below.
 
@@ -805,7 +811,7 @@ class ATG(Algorithm):
     delta: float = 0.1
     name: str = "ATG"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 
@@ -860,7 +866,7 @@ ADMMTrackingGradient = ATG  # alias
 
 
 @dataclass(eq=False)
-class DLM(Algorithm):
+class DLM(Algorithm[costs.GradientCost]):
     r"""
     Decentralized Linearized ADMM (DLM) [r12]_ characterized by the update steps below (see also [r13]_).
 
@@ -894,7 +900,7 @@ class DLM(Algorithm):
     penalty: float
     name: str = "DLM"
 
-    def run(self, network: P2PNetwork) -> None:
+    def run(self, network: P2PNetwork[costs.GradientCost]) -> None:
         r"""
         Run the algorithm.
 

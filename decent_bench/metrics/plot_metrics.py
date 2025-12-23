@@ -4,6 +4,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Sequence
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,6 +13,7 @@ from matplotlib.axes import Axes as SubPlot
 import decent_bench.metrics.metric_utils as utils
 from decent_bench.agents import AgentMetricsView
 from decent_bench.benchmark_problem import BenchmarkProblem
+from decent_bench.costs import FunctionCost, GradientCost
 from decent_bench.distributed_algorithms import Algorithm
 from decent_bench.utils.logger import LOGGER
 
@@ -44,7 +46,11 @@ class PlotMetric(ABC):
         """Label for the y-axis."""
 
     @abstractmethod
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> Sequence[tuple[X, Y]]:
+    def get_data_from_trial(
+        self,
+        agents: list[AgentMetricsView[Any]],
+        problem: BenchmarkProblem[Any],
+    ) -> Sequence[tuple[X, Y]]:
         """Extract trial data in the form of (x, y) datapoints."""
 
 
@@ -64,7 +70,11 @@ class RegretPerIteration(PlotMetric):
     x_label: str = "iteration"
     y_label: str = "regret"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> list[tuple[X, Y]]:  # noqa: D102
+    def get_data_from_trial(  # noqa: D102
+        self,
+        agents: list[AgentMetricsView[FunctionCost]],
+        problem: BenchmarkProblem[FunctionCost],
+    ) -> list[tuple[X, Y]]:
         iter_reached_by_all = min(len(a.x_history) for a in agents)
         return [(i, utils.regret(agents, problem, i)) for i in range(iter_reached_by_all)]
 
@@ -85,7 +95,11 @@ class GradientNormPerIteration(PlotMetric):
     x_label: str = "iteration"
     y_label: str = "gradient norm"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[tuple[X, Y]]:  # noqa: D102
+    def get_data_from_trial(  # noqa: D102
+        self,
+        agents: list[AgentMetricsView[GradientCost]],
+        _: BenchmarkProblem[Any],
+    ) -> list[tuple[X, Y]]:
         iter_reached_by_all = min(len(a.x_history) for a in agents)
         return [(i, utils.gradient_norm(agents, i)) for i in range(iter_reached_by_all)]
 
@@ -107,8 +121,8 @@ MARKERS = ["o", "s", "v", "^", "*", "D", "H", "<", ">", "p"]
 
 
 def plot(
-    resulting_agent_states: dict[Algorithm, list[list[AgentMetricsView]]],
-    problem: BenchmarkProblem,
+    resulting_agent_states: dict[Algorithm[Any], list[list[AgentMetricsView[Any]]]],
+    problem: BenchmarkProblem[Any],
     metrics: list[PlotMetric],
 ) -> None:
     """
@@ -173,7 +187,7 @@ def _create_metric_subplots(metrics: list[PlotMetric]) -> list[tuple[PlotMetric,
 
 
 def _get_data_per_trial(
-    agents_per_trial: list[list[AgentMetricsView]], problem: BenchmarkProblem, metric: PlotMetric
+    agents_per_trial: list[list[AgentMetricsView[Any]]], problem: BenchmarkProblem[Any], metric: PlotMetric
 ) -> list[Sequence[tuple[X, Y]]]:
     data_per_trial: list[Sequence[tuple[X, Y]]] = []
     for agents in agents_per_trial:

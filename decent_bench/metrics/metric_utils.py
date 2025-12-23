@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from functools import cache
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy import float64
@@ -11,6 +12,9 @@ import decent_bench.utils.interoperability as iop
 from decent_bench.agents import AgentMetricsView
 from decent_bench.benchmark_problem import BenchmarkProblem
 from decent_bench.utils.array import Array
+
+if TYPE_CHECKING:
+    from decent_bench import costs
 
 
 def single(values: Sequence[float]) -> float:
@@ -27,7 +31,7 @@ def single(values: Sequence[float]) -> float:
 
 
 @cache
-def x_mean(agents: tuple[AgentMetricsView, ...], iteration: int = -1) -> Array:
+def x_mean(agents: tuple[AgentMetricsView["costs.Cost"], ...], iteration: int = -1) -> Array:
     """
     Calculate the mean x at *iteration* (or using the agents' final x if *iteration* is -1).
 
@@ -44,7 +48,11 @@ def x_mean(agents: tuple[AgentMetricsView, ...], iteration: int = -1) -> Array:
     return iop.mean(iop.stack(all_x_at_iter), dim=0)
 
 
-def regret(agents: list[AgentMetricsView], problem: BenchmarkProblem, iteration: int = -1) -> float:
+def regret(
+    agents: list[AgentMetricsView["costs.FunctionCost"]],
+    problem: BenchmarkProblem["costs.FunctionCost"],
+    iteration: int = -1,
+) -> float:
     r"""
     Calculate the global regret at *iteration* (or using the agents' final x if *iteration* is -1).
 
@@ -59,7 +67,7 @@ def regret(agents: list[AgentMetricsView], problem: BenchmarkProblem, iteration:
     return abs(optimal_cost - actual_cost)
 
 
-def gradient_norm(agents: list[AgentMetricsView], iteration: int = -1) -> float:
+def gradient_norm(agents: list[AgentMetricsView["costs.GradientCost"]], iteration: int = -1) -> float:
     r"""
     Calculate the global gradient norm at *iteration* (or using the agents' final x if *iteration* is -1).
 
@@ -73,7 +81,7 @@ def gradient_norm(agents: list[AgentMetricsView], iteration: int = -1) -> float:
 
 
 @cache
-def x_error(agent: AgentMetricsView, problem: BenchmarkProblem) -> NDArray[float64]:
+def x_error(agent: AgentMetricsView["costs.Cost"], problem: BenchmarkProblem["costs.Cost"]) -> NDArray[float64]:
     r"""
     Calculate the x error per iteration as defined below.
 
@@ -90,7 +98,9 @@ def x_error(agent: AgentMetricsView, problem: BenchmarkProblem) -> NDArray[float
 
 
 @cache
-def asymptotic_convergence_rate_and_order(agent: AgentMetricsView, problem: BenchmarkProblem) -> tuple[float, float]:
+def asymptotic_convergence_rate_and_order(
+    agent: AgentMetricsView["costs.Cost"], problem: BenchmarkProblem["costs.Cost"]
+) -> tuple[float, float]:
     r"""
     Estimate the asymptotic convergence rate and order as defined below.
 
@@ -112,7 +122,9 @@ def asymptotic_convergence_rate_and_order(agent: AgentMetricsView, problem: Benc
 
 
 @cache
-def iterative_convergence_rate_and_order(agent: AgentMetricsView, problem: BenchmarkProblem) -> tuple[float, float]:
+def iterative_convergence_rate_and_order(
+    agent: AgentMetricsView["costs.Cost"], problem: BenchmarkProblem["costs.Cost"]
+) -> tuple[float, float]:
     r"""
     Estimate the iterative convergence rate and order as defined below.
 

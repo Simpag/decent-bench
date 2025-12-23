@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from multiprocessing.managers import SyncManager
 from queue import Queue
 from threading import Thread
+from typing import Any
 
 from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeRemainingColumn
 
@@ -25,7 +26,7 @@ class ProgressBarController:
 
     """
 
-    def __init__(self, manager: SyncManager, algorithms: list[Algorithm], n_trials: int):
+    def __init__(self, manager: SyncManager, algorithms: list[Algorithm[Any]], n_trials: int):
         self._progress_increment_queue: Queue[_ProgressRecord] = manager.Queue()
         orchestrator = Progress(
             TextColumn("{task.description}"),
@@ -39,7 +40,7 @@ class ProgressBarController:
         listener_thread = Thread(target=self._progress_listener, args=(orchestrator, self._progress_increment_queue))
         listener_thread.start()
 
-    def start_progress_bar(self, algorithm: Algorithm) -> None:
+    def start_progress_bar(self, algorithm: Algorithm[Any]) -> None:
         """
         Start the clock of *algorithm*'s progress bar without incrementing it.
 
@@ -50,7 +51,7 @@ class ProgressBarController:
         progress_bar_id = self._progress_bar_ids[algorithm]
         self._progress_increment_queue.put(_ProgressRecord(progress_bar_id, 0))
 
-    def advance_progress_bar(self, algorithm: Algorithm) -> None:
+    def advance_progress_bar(self, algorithm: Algorithm[Any]) -> None:
         """Advance *algorithm*'s progress bar by one trial."""
         progress_bar_id = self._progress_bar_ids[algorithm]
         self._progress_increment_queue.put(_ProgressRecord(progress_bar_id, 1))

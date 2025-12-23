@@ -3,22 +3,23 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
-from decent_bench.costs import Cost
+from decent_bench import costs
 from decent_bench.schemes import AgentActivationScheme
 from decent_bench.utils.array import Array
 
 
-class Agent:
+class Agent[CF: costs.Cost]:
     """Agent with unique id, local cost function, and activation scheme."""
 
-    def __init__(self, agent_id: int, cost: Cost, activation: AgentActivationScheme):
+    def __init__(self, agent_id: int, cost: CF, activation: AgentActivationScheme):
         self._id = agent_id
         self._cost = cost
         self._activation = activation
         self._x_history: list[Array] = []
         self._auxiliary_variables: dict[str, Array] = {}
-        self._received_messages: dict[Agent, Array] = {}
+        self._received_messages: dict[Agent[CF], Array] = {}
         self._n_sent_messages = 0
         self._n_received_messages = 0
         self._n_sent_messages_dropped = 0
@@ -26,10 +27,14 @@ class Agent:
         self._n_gradient_calls = 0
         self._n_hessian_calls = 0
         self._n_proximal_calls = 0
-        cost.function = self._call_counting_function  # type: ignore[method-assign]
-        cost.gradient = self._call_counting_gradient  # type: ignore[method-assign]
-        cost.hessian = self._call_counting_hessian  # type: ignore[method-assign]
-        cost.proximal = self._call_counting_proximal  # type: ignore[method-assign]
+        if isinstance(cost, costs.FunctionCost):
+            cost.function = self._call_counting_function  # type: ignore[method-assign]
+        if isinstance(cost, costs.GradientCost):
+            cost.gradient = self._call_counting_gradient  # type: ignore[method-assign]
+        if isinstance(cost, costs.HessianCost):
+            cost.hessian = self._call_counting_hessian  # type: ignore[method-assign]
+        if isinstance(cost, costs.ProximalCost):
+            cost.proximal = self._call_counting_proximal  # type: ignore[method-assign]
 
     @property
     def id(self) -> int:
@@ -37,7 +42,7 @@ class Agent:
         return self._id
 
     @property
-    def cost(self) -> Cost:
+    def cost(self) -> CF:
         """
         Local cost function.
 
@@ -74,7 +79,7 @@ class Agent:
         self._x_history.append(x)
 
     @property
-    def messages(self) -> Mapping[Agent, Array]:
+    def messages(self) -> Mapping[Agent[CF], Array]:
         """Messages received by neighbors."""
         return MappingProxyType(self._received_messages)
 
@@ -88,7 +93,7 @@ class Agent:
         *,
         x: Array | None = None,
         aux_vars: dict[str, Array] | None = None,
-        received_msgs: dict[Agent, Array] | None = None,
+        received_msgs: dict[Agent[CF], Array] | None = None,
     ) -> None:
         """
         Initialize local variables and messages before running an algorithm.
@@ -108,19 +113,39 @@ class Agent:
 
     def _call_counting_function(self, x: Array) -> float:
         self._n_function_calls += 1
-        return self._cost.__class__.function(self.cost, x)
+
+        if TYPE_CHECKING:
+            # Type checkers can't infer that self._cost is a FunctionCost here from the check in init
+            assert isinstance(self._cost, costs.FunctionCost)
+
+        return self._cost.__class__.function(self._cost, x)
 
     def _call_counting_gradient(self, x: Array) -> Array:
         self._n_gradient_calls += 1
-        return self._cost.__class__.gradient(self.cost, x)
+
+        if TYPE_CHECKING:
+            # Type checkers can't infer that self._cost is a FunctionCost here from the check in init
+            assert isinstance(self._cost, costs.GradientCost)
+
+        return self._cost.__class__.gradient(self._cost, x)
 
     def _call_counting_hessian(self, x: Array) -> Array:
         self._n_hessian_calls += 1
-        return self._cost.__class__.hessian(self.cost, x)
+
+        if TYPE_CHECKING:
+            # Type checkers can't infer that self._cost is a FunctionCost here from the check in init
+            assert isinstance(self._cost, costs.HessianCost)
+
+        return self._cost.__class__.hessian(self._cost, x)
 
     def _call_counting_proximal(self, x: Array, rho: float) -> Array:
         self._n_proximal_calls += 1
-        return self._cost.__class__.proximal(self.cost, x, rho)
+
+        if TYPE_CHECKING:
+            # Type checkers can't infer that self._cost is a FunctionCost here from the check in init
+            assert isinstance(self._cost, costs.ProximalCost)
+
+        return self._cost.__class__.proximal(self._cost, x, rho)
 
     def __index__(self) -> int:
         """Enable using agent as index, for example ``W[a1, a2]`` instead of ``W[a1.id, a2.id]``."""
@@ -128,10 +153,10 @@ class Agent:
 
 
 @dataclass(frozen=True, eq=False)
-class AgentMetricsView:
+class AgentMetricsView[CF: costs.Cost]:
     """Immutable view of agent that exposes useful properties for calculating metrics."""
 
-    cost: Cost
+    cost: CF
     x_history: list[Array]
     n_function_calls: int
     n_gradient_calls: int
@@ -142,7 +167,7 @@ class AgentMetricsView:
     n_sent_messages_dropped: int
 
     @staticmethod
-    def from_agent(agent: Agent) -> AgentMetricsView:
+    def from_agent(agent: Agent[CF]) -> AgentMetricsView[CF]:
         """Create from agent."""
         return AgentMetricsView(
             cost=agent.cost,
