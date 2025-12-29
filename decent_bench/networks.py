@@ -11,16 +11,17 @@ import numpy as np
 import decent_bench.utils.interoperability as iop
 from decent_bench.agents import Agent
 from decent_bench.benchmark_problem import BenchmarkProblem
+from decent_bench.costs import Cost
 from decent_bench.schemes import CompressionScheme, DropScheme, NoiseScheme
 from decent_bench.utils.array import Array
 
 if TYPE_CHECKING:
-    AgentGraph = nx.Graph[Agent]
+    AgentGraph = nx.Graph[Agent[Any]]
 else:
     AgentGraph = nx.Graph
 
 
-class Network(ABC):  # noqa: B024
+class Network[CF: Cost](ABC):  # noqa: B024
     """Base network object defining communication logic shared by all network types."""
 
     def __init__(
@@ -45,21 +46,21 @@ class Network(ABC):  # noqa: B024
         """Alias for the underlying graph."""
         return self.graph
 
-    def agents(self) -> list[Agent]:
+    def agents(self) -> list[Agent[CF]]:
         """Get all agents in the network."""
         return list(self.graph)
 
     @property
-    def degrees(self) -> dict[Agent, int]:
+    def degrees(self) -> dict[Agent[CF], int]:
         """Degree of each agent in the network."""
         return dict(self.graph.degree())
 
     @property
-    def edges(self) -> list[tuple[Agent, Agent]]:
+    def edges(self) -> list[tuple[Agent[CF], Agent[CF]]]:
         """Edges of the network as (agent, agent) tuples."""
         return list(self.graph.edges())
 
-    def active_agents(self, iteration: int) -> list[Agent]:
+    def active_agents(self, iteration: int) -> list[Agent[CF]]:
         """
         Get all active agents.
 
@@ -68,11 +69,11 @@ class Network(ABC):  # noqa: B024
         """
         return [a for a in self.agents() if a._activation.is_active(iteration)]  # noqa: SLF001
 
-    def connected_agents(self, agent: Agent) -> list[Agent]:
+    def connected_agents(self, agent: Agent[CF]) -> list[Agent[CF]]:
         """Agents directly connected to ``agent`` in the underlying graph."""
         return list(self.graph.neighbors(agent))
 
-    def _send_one(self, sender: Agent, receiver: Agent, msg: Array) -> None:
+    def _send_one(self, sender: Agent[CF], receiver: Agent[CF], msg: Array) -> None:
         """
         Send message to an agent.
 
@@ -94,8 +95,8 @@ class Network(ABC):  # noqa: B024
 
     def send(
         self,
-        sender: Agent,
-        receiver: Agent | Sequence[Agent] | None = None,
+        sender: Agent[CF],
+        receiver: Agent[CF] | Sequence[Agent[CF]] | None = None,
         msg: Array | None = None,
     ) -> None:
         """
@@ -133,7 +134,7 @@ class Network(ABC):  # noqa: B024
         for r in receiver:
             self._send_one(sender=sender, receiver=r, msg=msg)
 
-    def _receive_one(self, receiver: Agent, sender: Agent) -> None:
+    def _receive_one(self, receiver: Agent[CF], sender: Agent[CF]) -> None:
         """
         Receive message from an agent.
 
@@ -146,7 +147,7 @@ class Network(ABC):  # noqa: B024
             receiver._received_messages[sender] = msg  # noqa: SLF001
             self.graph.edges[sender, receiver][str(receiver.id)] = None
 
-    def receive(self, receiver: Agent, sender: Agent | Sequence[Agent] | None = None) -> None:
+    def receive(self, receiver: Agent[CF], sender: Agent[CF] | Sequence[Agent[CF]] | None = None) -> None:
         """
         Receive message(s) at an agent.
 
@@ -178,7 +179,7 @@ class Network(ABC):  # noqa: B024
             self._receive_one(receiver=receiver, sender=s)
 
 
-class P2PNetwork(Network):
+class P2PNetwork[CF: Cost](Network[CF]):
     """Peer-to-peer network architecture where agents communicate directly with each other."""
 
     def __init__(
@@ -195,23 +196,6 @@ class P2PNetwork(Network):
             message_drop=message_drop,
         )
         self.W: Array | None = None
-
-    def set_weights(self, weights: Array) -> None:
-        """
-        Set custom consensus weights matrix.
-
-        A simple way to create custom weights is to start using numpy and then
-        use :func:`~decent_bench.utils.interoperability.to_array` to convert to an
-        :class:`~decent_bench.utils.array.Array` object with the desired framework and device.
-        For an example see :func:`~decent_bench.utils.interoperability.zeros`.
-
-        Note:
-            If not set, the weights matrix is initialized using the Metropolis-Hastings method.
-            Weights will be overwritten if framework or device differ from
-            ``Agent.cost.framework`` or ``Agent.cost.device``.
-
-        """
-        self.W = weights
 
     @property
     def weights(self) -> Array:
@@ -240,6 +224,32 @@ class P2PNetwork(Network):
         self.W = iop.to_array(W, agents[0].cost.framework, agents[0].cost.device)
         return self.W
 
+    @weights.setter
+    def weights(self, weights: Array) -> None:
+        """
+        Set custom consensus weights matrix.
+
+        A simple way to create custom weights is to start using numpy and then
+        use :func:`~decent_bench.utils.interoperability.to_array` to convert to an
+        :class:`~decent_bench.utils.array.Array` object with the desired framework and device.
+        For an example see :func:`~decent_bench.utils.interoperability.zeros`.
+
+        Note:
+            If not set, the weights matrix is initialized using the Metropolis-Hastings method.
+
+        Raises:
+            ValueError: if the weights matrix does not have shape (n_agents, n_agents)
+            ValueError: if the weights matrix does not have the same framework and device as the agents' cost functions
+
+        """
+        if iop.shape(weights) != (len(self.agents()), len(self.agents())):
+            raise ValueError("Weights matrix must have shape (n_agents, n_agents)")
+
+        if iop.framework_device_of_array(weights) != (self.agents()[0].cost.framework, self.agents()[0].cost.device):
+            raise ValueError("Weights matrix must have the same framework and device as the agents' cost functions")
+
+        self.W = weights
+
     @cached_property
     def adjacency(self) -> Array:
         """
@@ -251,7 +261,7 @@ class P2PNetwork(Network):
         adjacency_matrix = nx.to_numpy_array(
             self.graph,
             nodelist=cast("Collection[Any]", agents),
-            dtype=float,
+            dtype=float,  # pyright: ignore[reportArgumentType]
         )  # type: ignore[call-overload]
         return iop.to_array(
             adjacency_matrix,
@@ -259,20 +269,20 @@ class P2PNetwork(Network):
             agents[0].cost.device,
         )
 
-    def neighbors(self, agent: Agent) -> list[Agent]:
+    def neighbors(self, agent: Agent[CF]) -> list[Agent[CF]]:
         """Alias for :meth:`~decent_bench.networks.Network.connected_agents`."""
         return super().connected_agents(agent)
 
-    def broadcast(self, sender: Agent, msg: Array) -> None:
+    def broadcast(self, sender: Agent[CF], msg: Array) -> None:
         """Send to all neighbors (alias for :meth:`~decent_bench.networks.Network.send` with ``receiver=None``)."""
         self.send(sender=sender, receiver=None, msg=msg)
 
-    def receive_all(self, receiver: Agent) -> None:
+    def receive_all(self, receiver: Agent[CF]) -> None:
         """Receive from all neighbors (alias for Network.receive with sender=None)."""
         self.receive(receiver=receiver, sender=None)
 
 
-class FedNetwork(Network):
+class FedNetwork[CF: Cost](Network[CF]):
     """Federated learning network with one server node connected to all client nodes (star topology)."""
 
     def __init__(
@@ -290,7 +300,7 @@ class FedNetwork(Network):
         )
         self._server = self._identify_server()
 
-    def _identify_server(self) -> Agent:
+    def _identify_server(self) -> Agent[CF]:
         degrees = dict(self.graph.degree())
         if not degrees:
             raise ValueError("FedNetwork requires at least one agent")
@@ -301,37 +311,37 @@ class FedNetwork(Network):
         return server
 
     @property
-    def server(self) -> Agent:
+    def server(self) -> Agent[CF]:
         """Agent acting as the central server."""
         return self._server
 
     @property
-    def coordinator(self) -> Agent:
+    def coordinator(self) -> Agent[CF]:
         """Alias for :attr:`server`."""
         return self.server
 
-    def agents(self) -> list[Agent]:
+    def agents(self) -> list[Agent[CF]]:
         """Get all client agents (excludes the server/coordinator)."""
         return [agent for agent in self.graph if agent is not self.server]
 
-    def active_agents(self, iteration: int) -> list[Agent]:
+    def active_agents(self, iteration: int) -> list[Agent[CF]]:
         """Get all active client agents (excludes the server/coordinator)."""
         # Delegates to Network.active_agents(), which iterates over self.agents() (clients only for FedNetwork).
         return super().active_agents(iteration)
 
     @property
-    def clients(self) -> list[Agent]:
+    def clients(self) -> list[Agent[CF]]:
         """Alias for :meth:`agents`."""
         return self.agents()
 
-    def active_clients(self, iteration: int) -> list[Agent]:
+    def active_clients(self, iteration: int) -> list[Agent[CF]]:
         """Alias for :meth:`active_agents`."""
         return self.active_agents(iteration)
 
     def send(
         self,
-        sender: Agent,
-        receiver: Agent | Sequence[Agent] | None = None,
+        sender: Agent[CF],
+        receiver: Agent[CF] | Sequence[Agent[CF]] | None = None,
         msg: Array | None = None,
     ) -> None:
         """
@@ -363,7 +373,7 @@ class FedNetwork(Network):
             raise ValueError("All receivers must be clients")
         super().send(sender=sender, receiver=receiver, msg=msg)
 
-    def receive(self, receiver: Agent, sender: Agent | Sequence[Agent] | None = None) -> None:
+    def receive(self, receiver: Agent[CF], sender: Agent[CF] | Sequence[Agent[CF]] | None = None) -> None:
         """
         Receive message(s) in a federated learning network.
 
@@ -401,7 +411,7 @@ class FedNetwork(Network):
         self.receive(receiver=self.server, sender=None)
 
 
-def create_distributed_network(problem: BenchmarkProblem) -> P2PNetwork:
+def create_distributed_network[CF: Cost](problem: BenchmarkProblem[CF]) -> P2PNetwork[CF]:
     """
     Create a distributed network - a network with peer-to-peer communication only, no coordinator.
 
@@ -434,7 +444,7 @@ def create_distributed_network(problem: BenchmarkProblem) -> P2PNetwork:
     )
 
 
-def create_federated_network(problem: BenchmarkProblem) -> FedNetwork:
+def create_federated_network[CF: Cost](problem: BenchmarkProblem[CF]) -> FedNetwork[CF]:
     """
     Create a federated learning network with a single server and multiple clients (star topology).
 

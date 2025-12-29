@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import wraps
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from decent_bench.utils.array import Array
 from decent_bench.utils.logger import LOGGER
@@ -12,10 +12,7 @@ from ._functions import to_array_like, to_jax, to_numpy, to_tensorflow, to_torch
 from ._helpers import framework_device_of_array
 
 if TYPE_CHECKING:
-    from decent_bench.costs import Cost
-
-T = TypeVar("T", bound=Callable[..., Any])
-"""A generic callable type variable."""
+    from decent_bench import costs
 
 
 def _get_converter(framework: SupportedFrameworks) -> Callable[[Array | Any, SupportedDevices], Any]:
@@ -31,7 +28,9 @@ def _get_converter(framework: SupportedFrameworks) -> Callable[[Array | Any, Sup
     raise ValueError(f"Unsupported framework: {framework}")
 
 
-def autodecorate_cost_method[T: Callable[..., Any]](superclass_method: T) -> Callable[[Callable[..., Any]], T]:
+def autodecorate_cost_method[SuperMethod: Callable[..., Any]](
+    superclass_method: SuperMethod,
+) -> Callable[[Callable[..., Any]], SuperMethod]:
     """
     Decorate Cost methods to automatically convert :class:`~decent_bench.utils.array.Array` args and return types.
 
@@ -40,7 +39,8 @@ def autodecorate_cost_method[T: Callable[..., Any]](superclass_method: T) -> Cal
     superclass method's return type annotation.
 
     Args:
-        superclass_method: The method from the superclass (e.g., `Cost.function`) that is being overridden.
+        superclass_method: The method from the superclass
+            (e.g., :meth:`FunctionCost.function <decent_bench.costs.FunctionCost.function>`) that is being overridden.
 
     Note:
         * Only arguments that are instances of :class:`~decent_bench.utils.array.Array` are converted.
@@ -52,7 +52,7 @@ def autodecorate_cost_method[T: Callable[..., Any]](superclass_method: T) -> Cal
 
     """
 
-    def decorator(func: Callable[..., Any]) -> T:
+    def decorator(func: Callable[..., Any]) -> SuperMethod:
         # Determine the expected return type from the superclass method's annotations.
         try:
             return_type_annotation = superclass_method.__annotations__["return"]
@@ -60,7 +60,7 @@ def autodecorate_cost_method[T: Callable[..., Any]](superclass_method: T) -> Cal
             return_type_annotation = None
 
         @wraps(func)
-        def wrapper(self: Cost, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+        def wrapper(self: costs.Cost, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
             converter = _get_converter(self.framework)
 
             if len(args) > 0:
@@ -105,6 +105,6 @@ def autodecorate_cost_method[T: Callable[..., Any]](superclass_method: T) -> Cal
 
         # Cast the wrapper to the type of the superclass method.
         # This tells mypy that the decorated method is compatible with the superclass.
-        return cast("T", wrapper)
+        return cast("SuperMethod", wrapper)
 
     return decorator

@@ -2,12 +2,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import reduce
 from operator import add
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, cast
 
 import networkx as nx
 
 import decent_bench.centralized_algorithms as ca
-from decent_bench.costs import Cost, LinearRegressionCost, LogisticRegressionCost
 from decent_bench.datasets import SyntheticClassificationData
 from decent_bench.schemes import (
     AgentActivationScheme,
@@ -24,7 +23,7 @@ from decent_bench.schemes import (
     UniformDropRate,
 )
 from decent_bench.utils.array import Array
-from decent_bench.utils.types import SupportedDevices, SupportedFrameworks
+from decent_bench.utils.types import CF_co, CF_regression, SupportedDevices, SupportedFrameworks
 
 if TYPE_CHECKING:
     AnyGraph = nx.Graph[Any]
@@ -33,7 +32,7 @@ else:
 
 
 @dataclass(eq=False)
-class BenchmarkProblem:
+class BenchmarkProblem(Generic[CF_co]):  # noqa: UP046
     """
     Benchmark problem to run algorithms on, defining settings such as communication constraints and topology.
 
@@ -51,7 +50,7 @@ class BenchmarkProblem:
 
     network_structure: AnyGraph
     x_optimal: Array
-    costs: Sequence[Cost]
+    costs: Sequence[CF_co]
     agent_state_snapshot_period: int
     agent_activations: Sequence[AgentActivationScheme]
     message_compression: CompressionScheme
@@ -60,7 +59,7 @@ class BenchmarkProblem:
 
 
 def create_regression_problem(
-    cost_cls: type[LinearRegressionCost | LogisticRegressionCost],
+    cost_cls: type[CF_regression],
     *,
     n_agents: int = 100,
     agent_state_snapshot_period: int = 1,
@@ -69,7 +68,7 @@ def create_regression_problem(
     compression: bool = False,
     noise: bool = False,
     drops: bool = False,
-) -> BenchmarkProblem:
+) -> BenchmarkProblem[CF_regression]:
     """
     Create out-of-the-box regression problems.
 
@@ -103,7 +102,7 @@ def create_regression_problem(
     message_drop = UniformDropRate(drop_rate=0.5) if drops else NoDrops()
     return BenchmarkProblem(
         network_structure=network_structure,
-        costs=costs,
+        costs=cast("Sequence[CF_regression]", costs),
         agent_state_snapshot_period=agent_state_snapshot_period,
         x_optimal=x_optimal,
         agent_activations=agent_activations,

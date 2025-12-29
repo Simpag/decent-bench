@@ -1,17 +1,19 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, Generic, final
 
 import decent_bench.utils.algorithm_helpers as alg_helpers
 import decent_bench.utils.interoperability as iop
+from decent_bench.costs import GradientCost, ProximalCost
 from decent_bench.networks import P2PNetwork
+from decent_bench.utils.types import CF_contra
 
 if TYPE_CHECKING:
     from decent_bench.utils.array import Array
 
 
-class Algorithm(ABC):
+class Algorithm(ABC, Generic[CF_contra]):  # noqa: UP046
     """Distributed algorithm - agents collaborate to solve an optimization problem using peer-to-peer communication."""
 
     @property
@@ -25,7 +27,7 @@ class Algorithm(ABC):
         """Name of the algorithm."""
 
     @abstractmethod
-    def initialize(self, network: P2PNetwork) -> None:
+    def initialize(self, network: P2PNetwork[CF_contra]) -> None:
         """
         Initialize the algorithm.
 
@@ -35,7 +37,7 @@ class Algorithm(ABC):
         """
 
     @abstractmethod
-    def step(self, network: P2PNetwork, iteration: int) -> None:
+    def step(self, network: P2PNetwork[CF_contra], iteration: int) -> None:
         """
         Perform one iteration of the algorithm.
 
@@ -45,7 +47,7 @@ class Algorithm(ABC):
 
         """
 
-    def finalize(self, network: P2PNetwork) -> None:
+    def finalize(self, network: P2PNetwork[CF_contra]) -> None:
         """
         Finalize the algorithm.
 
@@ -63,7 +65,7 @@ class Algorithm(ABC):
                 i.aux_vars.clear()
 
     @final
-    def run(self, network: P2PNetwork, progress_callback: Callable[[int], None] | None = None) -> None:
+    def run(self, network: P2PNetwork[CF_contra], progress_callback: Callable[[int], None] | None = None) -> None:
         """
         Run the algorithm.
 
@@ -89,7 +91,7 @@ class Algorithm(ABC):
 
 
 @dataclass(eq=False)
-class DGD(Algorithm):
+class DGD(Algorithm[GradientCost]):
     r"""
     Distributed gradient descent characterized by the update step below.
 
@@ -110,14 +112,14 @@ class DGD(Algorithm):
     iterations: int = 100
     name: str = "DGD"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             i.initialize(x=self.x0, received_msgs=dict.fromkeys(network.neighbors(i), self.x0))
 
         self.W = network.weights
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         for i in network.active_agents(iteration):
             s = iop.stack([self.W[i, j] * x_j for j, x_j in i.messages.items()])
             neighborhood_avg = iop.sum(s, dim=0)
@@ -132,7 +134,7 @@ class DGD(Algorithm):
 
 
 @dataclass(eq=False)
-class ATC(Algorithm):
+class ATC(Algorithm[GradientCost]):
     r"""
     Adapt-Then-Combine (ATC) distributed gradient descent characterized by the update below [r1]_.
 
@@ -159,7 +161,7 @@ class ATC(Algorithm):
     iterations: int = 100
     name: str = "ATC"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             i.initialize(
@@ -170,7 +172,7 @@ class ATC(Algorithm):
 
         self.W = network.weights
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         # gradient step (a.k.a. adapt step)
         for i in network.active_agents(iteration):
             i.aux_vars["y"] = i.x - self.step_size * i.cost.gradient(i.x)
@@ -194,7 +196,7 @@ AdaptThenCombine = ATC  # alias
 
 
 @dataclass(eq=False)
-class SimpleGT(Algorithm):
+class SimpleGT(Algorithm[GradientCost]):
     r"""
     Gradient tracking algorithm characterized by the update step below.
 
@@ -219,7 +221,7 @@ class SimpleGT(Algorithm):
     iterations: int = 100
     name: str = "SimpleGT"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             y0 = iop.zeros(framework=i.cost.framework, shape=i.cost.shape, device=i.cost.device)
@@ -228,7 +230,7 @@ class SimpleGT(Algorithm):
 
         self.W = network.weights
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         for i in network.active_agents(iteration):
             i.aux_vars["y_new"] = i.x - self.step_size * i.cost.gradient(i.x)
             s = iop.stack([self.W[i, j] * x_j for j, x_j in i.messages.items()])
@@ -248,7 +250,7 @@ SimpleGradientTracking = SimpleGT  # Alias
 
 
 @dataclass(eq=False)
-class ED(Algorithm):
+class ED(Algorithm[GradientCost]):
     r"""
     Gradient tracking algorithm characterized by the update step below.
 
@@ -274,7 +276,7 @@ class ED(Algorithm):
     iterations: int = 100
     name: str = "ED"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             y0 = iop.zeros(framework=i.cost.framework, shape=i.cost.shape, device=i.cost.device)
@@ -290,7 +292,7 @@ class ED(Algorithm):
         self.W = network.weights
         self.W = 0.5 * (iop.eye_like(self.W) + self.W)
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         for i in network.active_agents(iteration):
             s = iop.stack([self.W[i, j] * msg for j, msg in i.messages.items()])
             i.x = iop.sum(s, dim=0) + self.W[i, i] * (i.x + i.aux_vars["y_new"] - i.aux_vars["y"])
@@ -308,7 +310,7 @@ ExactDiffusion = ED  # alias
 
 
 @dataclass(eq=False)
-class AugDGM(Algorithm):
+class AugDGM(Algorithm[GradientCost]):
     r"""
     Aug-DGM [r2]_ or ATC-DIGing [r3]_ gradient tracking algorithm, characterized by the updates below.
 
@@ -341,7 +343,7 @@ class AugDGM(Algorithm):
     iterations: int = 100
     name: str = "Aug-DGM"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             y0 = i.cost.gradient(self.x0)
@@ -354,7 +356,7 @@ class AugDGM(Algorithm):
 
         self.W = network.weights
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         # 1st communication round
         #     step 1: perform local gradient step and communicate
         for i in network.active_agents(iteration):
@@ -395,7 +397,7 @@ ATCDIGing = AugDGM  # alias
 
 
 @dataclass(eq=False)
-class WangElia(Algorithm):
+class WangElia(Algorithm[GradientCost]):
     r"""
     Wang-Elia gradient tracking algorithm characterized by the updates below, see [r4]_ and [r5]_.
 
@@ -429,7 +431,7 @@ class WangElia(Algorithm):
     iterations: int = 100
     name: str = "Wang-Elia"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             neighbors = network.neighbors(i)
@@ -444,7 +446,7 @@ class WangElia(Algorithm):
 
         self.K = K
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         # 1st communication round
         for i in network.active_agents(iteration):
             network.broadcast(i, i.x + i.aux_vars["z"])
@@ -477,7 +479,7 @@ class WangElia(Algorithm):
 
 
 @dataclass(eq=False)
-class EXTRA(Algorithm):
+class EXTRA(Algorithm[GradientCost]):
     r"""
     EXTRA [r6]_ gradient tracking algorithm characterized by the update steps below.
 
@@ -506,7 +508,7 @@ class EXTRA(Algorithm):
     iterations: int = 100
     name: str = "EXTRA"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             i.initialize(
@@ -517,7 +519,7 @@ class EXTRA(Algorithm):
 
         self.W = network.weights
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         if iteration == 0:
             # first iteration (iteration k=1)
             for i in network.active_agents(0):
@@ -559,7 +561,7 @@ class EXTRA(Algorithm):
 
 
 @dataclass(eq=False)
-class ATCTracking(Algorithm):
+class ATCTracking(Algorithm[GradientCost]):
     r"""
     ATC-Tracking [r7]_, [r8]_, [r9]_ gradient tracking algorithm, characterized by the updates below.
 
@@ -596,7 +598,7 @@ class ATCTracking(Algorithm):
     iterations: int = 100
     name: str = "ATC-Tracking"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             y0 = i.cost.gradient(self.x0)
@@ -609,7 +611,7 @@ class ATCTracking(Algorithm):
 
         self.W = network.weights
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         # 1st communication round
         #     step 1: perform local gradient step and communicate
         for i in network.active_agents(iteration):
@@ -652,7 +654,7 @@ ATCT = ATCTracking  # alias
 
 
 @dataclass(eq=False)
-class NIDS(Algorithm):
+class NIDS(Algorithm[GradientCost]):
     r"""
     NIDS [r10]_ gradient tracking algorithm characterized by the update steps below.
 
@@ -682,7 +684,7 @@ class NIDS(Algorithm):
     iterations: int = 100
     name: str = "NIDS"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             i.initialize(
@@ -695,7 +697,7 @@ class NIDS(Algorithm):
         W_tilde = 0.5 * (iop.eye_like(W) + W)  # noqa: N806
         self.W_tilde = W_tilde
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         if iteration == 0:
             # first iteration (iteration k=1)
             for i in network.active_agents(0):
@@ -725,7 +727,7 @@ class NIDS(Algorithm):
 
 
 @dataclass(eq=False)
-class ADMM(Algorithm):
+class ADMM(Algorithm[ProximalCost]):
     r"""
     Distributed Alternating Direction Method of Multipliers characterized by the update step below.
 
@@ -738,7 +740,7 @@ class ADMM(Algorithm):
     where
     :math:`\mathbf{x}_{i, k}` is agent i's local optimization variable at iteration k,
     :math:`\operatorname{prox}` is the proximal operator described in :meth:`Cost.proximal()
-    <decent_bench.costs.Cost.proximal>`,
+    <decent_bench.costs.ProximalCost.proximal>`,
     :math:`\rho > 0` is the Lagrangian penalty parameter,
     :math:`N_i` is the number of neighbors of i,
     :math:`f_i` is i's local cost function,
@@ -757,7 +759,7 @@ class ADMM(Algorithm):
     iterations: int = 100
     name: str = "ADMM"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[ProximalCost]) -> None:  # noqa: D102
         pN = {i: self.rho * len(network.neighbors(i)) for i in network.agents()}  # noqa: N806
         all_agents = network.agents()
         self.z0 = alg_helpers.zero_initialization(self.z0, network, stacked_copies=len(all_agents))
@@ -773,7 +775,7 @@ class ADMM(Algorithm):
 
         self.pN = pN
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[ProximalCost], iteration: int) -> None:  # noqa: D102
         for i in network.active_agents(iteration):
             i.x = i.cost.proximal(x=iop.sum(i.aux_vars["z"], dim=0) / self.pN[i], rho=1 / self.pN[i])
 
@@ -790,7 +792,7 @@ class ADMM(Algorithm):
 
 
 @dataclass(eq=False)
-class ATG(Algorithm):
+class ATG(Algorithm[GradientCost]):
     r"""
     ADMM-Tracking Gradient (ATG) [r11]_ characterized by the update steps below.
 
@@ -836,7 +838,7 @@ class ATG(Algorithm):
     iterations: int = 100
     name: str = "ATG"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         pN = {i: self.rho * len(network.neighbors(i)) for i in network.agents()}  # noqa: N806
         all_agents = network.agents()
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
@@ -859,7 +861,7 @@ class ATG(Algorithm):
 
         self.pN = pN
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         # step 1: update consensus-ADMM variables
         for i in network.active_agents(iteration):
             # update auxiliary variables
@@ -895,7 +897,7 @@ ADMMTrackingGradient = ATG  # alias
 
 
 @dataclass(eq=False)
-class DLM(Algorithm):
+class DLM(Algorithm[GradientCost]):
     r"""
     Decentralized Linearized ADMM (DLM) [r12]_ characterized by the update steps below (see also [r13]_).
 
@@ -930,14 +932,14 @@ class DLM(Algorithm):
     iterations: int = 100
     name: str = "DLM"
 
-    def initialize(self, network: P2PNetwork) -> None:  # noqa: D102
+    def initialize(self, network: P2PNetwork[GradientCost]) -> None:  # noqa: D102
         self.x0 = alg_helpers.zero_initialization(self.x0, network)
         for i in network.agents():
             # y must be initialized to zero
             y = iop.zeros(framework=i.cost.framework, shape=i.cost.shape, device=i.cost.device)
             i.initialize(x=self.x0, aux_vars={"y": y})
 
-    def step(self, network: P2PNetwork, iteration: int) -> None:  # noqa: D102
+    def step(self, network: P2PNetwork[GradientCost], iteration: int) -> None:  # noqa: D102
         if iteration == 0:
             # step 0: first communication round
             for i in network.active_agents(0):

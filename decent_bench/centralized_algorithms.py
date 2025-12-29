@@ -6,11 +6,11 @@ import decent_bench.utils.interoperability as iop
 from decent_bench.utils.array import Array
 
 if TYPE_CHECKING:
-    from decent_bench.costs import Cost
+    from decent_bench.costs import GradientCost
 
 
 def gradient_descent(
-    cost: "Cost",
+    cost: "GradientCost",
     x0: Array | None,
     *,
     step_size: float,
@@ -54,7 +54,7 @@ def gradient_descent(
 
 
 def accelerated_gradient_descent(
-    cost: "Cost",
+    cost: "GradientCost",
     x0: Array | None,
     *,
     max_iter: int,
@@ -115,7 +115,7 @@ def accelerated_gradient_descent(
     return x
 
 
-def proximal_solver(cost: "Cost", y: Array, rho: float) -> Array:
+def proximal_solver(cost: "GradientCost", y: Array, rho: float) -> Array:
     """
     Find the proximal at y using accelerated gradient descent.
 
