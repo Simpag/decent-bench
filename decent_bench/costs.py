@@ -12,6 +12,7 @@ from scipy import special
 import decent_bench.centralized_algorithms as ca
 import decent_bench.utils.interoperability as iop
 from decent_bench.utils.array import Array
+from decent_bench.utils.logger import LOGGER
 from decent_bench.utils.types import SupportedDevices, SupportedFrameworks
 
 
@@ -88,6 +89,24 @@ class Cost(ABC):
         """
 
     @abstractmethod
+    def __add__(self, other: Cost) -> Cost:
+        """
+        Add another cost function to create a new one.
+
+        :class:`~SumCost` can be used as the result of :meth:`__add__` by returning
+        ``SumCost([self, other])``. However, it's often more efficient to preserve the cost function type if possible.
+        For example, the addition of two :class:`~QuadraticCost` objects benefits from returning a new
+        :class:`~QuadraticCost` instead of a :class:`~SumCost` as this preserves the closed
+        form proximal solution and only requires one evaluation instead of two when calling
+        :meth:`function <FunctionCost.function>`, :meth:`gradient <GradientCost.gradient>`
+        and :meth:`hessian <HessianCost.hessian>`.
+        """
+
+
+class FunctionCost(Cost, ABC):
+    """Cost function with function function method."""
+
+    @abstractmethod
     def function(self, x: Array) -> float:
         """Evaluate function at x."""
 
@@ -103,13 +122,25 @@ class Cost(ABC):
         """Alias for :meth:`function`."""
         return self.function(x)
 
+
+class GradientCost(Cost, ABC):
+    """Cost function with gradient method."""
+
     @abstractmethod
     def gradient(self, x: Array) -> Array:
         """Gradient at x."""
 
+
+class HessianCost(Cost, ABC):
+    """Cost function with hessian method."""
+
     @abstractmethod
     def hessian(self, x: Array) -> Array:
         """Hessian at x."""
+
+
+class ProximalCost(Cost, ABC):
+    """Cost function with proximal method."""
 
     @abstractmethod
     def proximal(self, x: Array, rho: float) -> Array:
@@ -124,21 +155,52 @@ class Cost(ABC):
         :meth:`~decent_bench.centralized_algorithms.proximal_solver`.
         """
 
-    @abstractmethod
-    def __add__(self, other: Cost) -> Cost:
-        """
-        Add another cost function to create a new one.
 
-        :class:`~SumCost` can be used as the result of :meth:`__add__` by returning
-        ``SumCost([self, other])``. However, it's often more efficient to preserve the cost function type if possible.
-        For example, the addition of two :class:`~QuadraticCost` objects benefits from returning a new
-        :class:`~QuadraticCost` instead of a :class:`~SumCost` as this preserves the closed
-        form proximal solution and only requires one evaluation instead of two when calling :meth:`evaluate`,
-        :meth:`gradient`, and :meth:`hessian`.
-        """
+class FunctionGradientCost(FunctionCost, GradientCost, ABC):
+    """Cost function with function and gradient methods."""
 
 
-class QuadraticCost(Cost):
+class FunctionHessianCost(FunctionCost, HessianCost, ABC):
+    """Cost function with function and hessian methods."""
+
+
+class FunctionProximalCost(FunctionCost, ProximalCost, ABC):
+    """Cost function with function and proximal methods."""
+
+
+class GradientHessianCost(GradientCost, HessianCost, ABC):
+    """Cost function with gradient and hessian methods."""
+
+
+class GradientProximalCost(GradientCost, ProximalCost, ABC):
+    """Cost function with gradient and proximal methods."""
+
+
+class HessianProximalCost(HessianCost, ProximalCost, ABC):
+    """Cost function with hessian and proximal methods."""
+
+
+class FunctionGradientHessianCost(FunctionGradientCost, HessianCost, ABC):
+    """Cost function with function, gradient and hessian methods."""
+
+
+class FunctionGradientProximalCost(FunctionGradientCost, ProximalCost, ABC):
+    """Cost function with function, gradient and proximal methods."""
+
+
+class FunctionHessianProximalCost(FunctionHessianCost, ProximalCost, ABC):
+    """Cost function with function, hessian and proximal methods."""
+
+
+class GradientHessianProximalCost(GradientHessianCost, ProximalCost, ABC):
+    """Cost function with gradient, hessian and proximal methods."""
+
+
+class FunctionGradientHessianProximalCost(FunctionGradientCost, HessianProximalCost, ABC):
+    """Cost function with function, gradient, hessian and proximal methods."""
+
+
+class QuadraticCost(FunctionGradientHessianProximalCost):
     r"""
     Quadratic cost function.
 
@@ -215,7 +277,7 @@ class QuadraticCost(Cost):
             return 0
         return np.nan
 
-    @iop.autodecorate_cost_method(Cost.function)
+    @iop.autodecorate_cost_method(FunctionCost.function)
     def function(self, x: NDArray[float64]) -> float:
         r"""
         Evaluate function at x.
@@ -224,7 +286,7 @@ class QuadraticCost(Cost):
         """
         return float(0.5 * x.dot(self.A.dot(x)) + self.b.dot(x) + self.c)
 
-    @iop.autodecorate_cost_method(Cost.gradient)
+    @iop.autodecorate_cost_method(GradientCost.gradient)
     def gradient(self, x: NDArray[float64]) -> NDArray[float64]:
         r"""
         Gradient at x.
@@ -233,7 +295,7 @@ class QuadraticCost(Cost):
         """
         return self.A_sym @ x + self.b
 
-    @iop.autodecorate_cost_method(Cost.hessian)
+    @iop.autodecorate_cost_method(HessianCost.hessian)
     def hessian(self, x: NDArray[float64]) -> NDArray[float64]:  # noqa: ARG002
         r"""
         Hessian at x.
@@ -243,7 +305,7 @@ class QuadraticCost(Cost):
         ret: NDArray[float64] = self.A_sym.copy()
         return ret
 
-    @iop.autodecorate_cost_method(Cost.proximal)
+    @iop.autodecorate_cost_method(ProximalCost.proximal)
     def proximal(self, x: NDArray[float64], rho: float) -> NDArray[float64]:
         r"""
         Proximal at x.
@@ -254,7 +316,7 @@ class QuadraticCost(Cost):
         where :math:`\rho > 0` is the penalty.
 
         This is a closed form solution, see
-        :meth:`Cost.proximal() <decent_bench.costs.Cost.proximal>`
+        :meth:`proximal <decent_bench.costs.ProximalCost.proximal>`
         for the general proximal definition.
         """
         lhs = rho * self.A_sym + np.eye(self.A.shape[1])
@@ -262,7 +324,7 @@ class QuadraticCost(Cost):
 
         return np.asarray(np.linalg.solve(lhs, rhs), dtype=float64)
 
-    def __add__(self, other: Cost) -> Cost:
+    def __add__(self, other: Cost) -> FunctionGradientHessianProximalCost:
         """
         Add another cost function.
 
@@ -283,7 +345,7 @@ class QuadraticCost(Cost):
         return SumCost([self, other])
 
 
-class LinearRegressionCost(Cost):
+class LinearRegressionCost(FunctionGradientHessianProximalCost):
     r"""
     Linear regression cost function.
 
@@ -387,17 +449,17 @@ class LinearRegressionCost(Cost):
         where :math:`\rho > 0` is the penalty.
 
         This is a closed form solution, see
-        :meth:`Cost.proximal() <decent_bench.costs.Cost.proximal>`
+        :meth:`Cost.proximal() <decent_bench.costs.ProximalCost.proximal>`
         for the general proximal definition.
         """
         return self.inner.proximal(x, rho)
 
-    def __add__(self, other: Cost) -> Cost:
+    def __add__(self, other: Cost) -> FunctionGradientHessianProximalCost:
         """Add another cost function."""
         return self.inner + other
 
 
-class LogisticRegressionCost(Cost):
+class LogisticRegressionCost(FunctionGradientHessianProximalCost):
     r"""
     Logistic regression cost function.
 
@@ -458,7 +520,7 @@ class LogisticRegressionCost(Cost):
         """
         return 0
 
-    @iop.autodecorate_cost_method(Cost.function)
+    @iop.autodecorate_cost_method(FunctionCost.function)
     def function(self, x: NDArray[float64]) -> float:
         r"""
         Evaluate function at x.
@@ -473,7 +535,7 @@ class LogisticRegressionCost(Cost):
         cost = self.b.dot(neg_log_sig) + (1 - self.b).dot(Ax + neg_log_sig)
         return float(cost)
 
-    @iop.autodecorate_cost_method(Cost.gradient)
+    @iop.autodecorate_cost_method(GradientCost.gradient)
     def gradient(self, x: NDArray[float64]) -> NDArray[float64]:
         r"""
         Gradient at x.
@@ -484,7 +546,7 @@ class LogisticRegressionCost(Cost):
         res: NDArray[float64] = self.A.T.dot(sig - self.b)
         return res
 
-    @iop.autodecorate_cost_method(Cost.hessian)
+    @iop.autodecorate_cost_method(HessianCost.hessian)
     def hessian(self, x: NDArray[float64]) -> NDArray[float64]:
         r"""
         Hessian at x.
@@ -504,12 +566,12 @@ class LogisticRegressionCost(Cost):
         Proximal at x solved using an iterative method.
 
         See
-        :meth:`Cost.proximal() <decent_bench.costs.Cost.proximal>`
+        :meth:`Cost.proximal() <decent_bench.costs.ProximalCost.proximal>`
         for the general proximal definition.
         """
         return ca.proximal_solver(self, x, rho)
 
-    def __add__(self, other: Cost) -> Cost:
+    def __add__(self, other: Cost) -> FunctionGradientHessianProximalCost:
         """
         Add another cost function.
 
@@ -527,7 +589,7 @@ class LogisticRegressionCost(Cost):
         return SumCost([self, other])
 
 
-class SumCost(Cost):
+class SumCost(FunctionGradientHessianProximalCost):
     """The sum of multiple cost functions."""
 
     def __init__(self, costs: list[Cost]):
@@ -590,22 +652,31 @@ class SumCost(Cost):
 
     def function(self, x: Array) -> float:
         """Sum the :meth:`function` of each cost function."""
-        return sum(cf.function(x) for cf in self.costs)
+        evals = [cf.function(x) for cf in self.costs if isinstance(cf, FunctionCost)]
+        if len(evals) < len(self.costs):
+            LOGGER.warning("Some cost functions in SumCost do not implement 'function'")
+        return sum(evals)
 
     def gradient(self, x: Array) -> Array:
         """Sum the :meth:`gradient` of each cost function."""
-        return iop.sum(iop.stack([cf.gradient(x) for cf in self.costs]), dim=0)
+        evals = [cf.gradient(x) for cf in self.costs if isinstance(cf, GradientCost)]
+        if len(evals) < len(self.costs):
+            LOGGER.warning("Some cost functions in SumCost do not implement 'gradient'")
+        return iop.sum(iop.stack(evals), dim=0)
 
     def hessian(self, x: Array) -> Array:
         """Sum the :meth:`hessian` of each cost function."""
-        return iop.sum(iop.stack([cf.hessian(x) for cf in self.costs]), dim=0)
+        evals = [cf.hessian(x) for cf in self.costs if isinstance(cf, HessianCost)]
+        if len(evals) < len(self.costs):
+            LOGGER.warning("Some cost functions in SumCost do not implement 'hessian'")
+        return iop.sum(iop.stack(evals), dim=0)
 
     def proximal(self, x: Array, rho: float) -> Array:
         """
         Proximal at x solved using an iterative method.
 
         See
-        :meth:`Cost.proximal() <decent_bench.costs.Cost.proximal>`
+        :meth:`Cost.proximal() <decent_bench.costs.ProximalCost.proximal>`
         for the general proximal definition.
         """
         return ca.proximal_solver(self, x, rho)

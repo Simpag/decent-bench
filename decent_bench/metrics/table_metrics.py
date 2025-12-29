@@ -1,7 +1,7 @@
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
-from typing import Literal
+from typing import Any, Generic, Literal
 
 import numpy as np
 import tabulate as tb
@@ -12,13 +12,15 @@ import decent_bench.metrics.metric_utils as utils
 import decent_bench.utils.interoperability as iop
 from decent_bench.agents import AgentMetricsView
 from decent_bench.benchmark_problem import BenchmarkProblem
+from decent_bench.costs import Cost, FunctionCost, GradientCost
 from decent_bench.distributed_algorithms import Algorithm
 from decent_bench.utils.logger import LOGGER
+from decent_bench.utils.types import CF_contra
 
 Statistic = Callable[[Sequence[float]], float]
 
 
-class TableMetric(ABC):
+class TableMetric(ABC, Generic[CF_contra]):  # noqa: UP046
     """
     Metric to display in the statistical results table at the end of the benchmarking execution.
 
@@ -47,11 +49,15 @@ class TableMetric(ABC):
         """Metric description to display in the table."""
 
     @abstractmethod
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> Sequence[float]:
+    def get_data_from_trial(
+        self,
+        agents: list[AgentMetricsView[CF_contra]],
+        problem: BenchmarkProblem[CF_contra],
+    ) -> Sequence[float]:
         """Extract trial data to be aggregated into a single value by each of the *statistics*."""
 
 
-class Regret(TableMetric):
+class Regret(TableMetric[FunctionCost]):
     """
     Global regret using the agents' final x.
 
@@ -62,11 +68,15 @@ class Regret(TableMetric):
 
     table_description: str = "regret \n[<1e-9 = exact conv.]"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> tuple[float]:  # noqa: D102
+    def get_data_from_trial(  # noqa: D102
+        self,
+        agents: list[AgentMetricsView[FunctionCost]],
+        problem: BenchmarkProblem[Any],
+    ) -> tuple[float]:
         return (utils.regret(agents, problem, iteration=-1),)
 
 
-class GradientNorm(TableMetric):
+class GradientNorm(TableMetric[GradientCost]):
     """
     Global gradient norm using the agents' final x.
 
@@ -77,11 +87,15 @@ class GradientNorm(TableMetric):
 
     table_description: str = "gradient norm"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> tuple[float]:  # noqa: D102
+    def get_data_from_trial(  # noqa: D102
+        self,
+        agents: list[AgentMetricsView[GradientCost]],
+        _: BenchmarkProblem[Any],
+    ) -> tuple[float]:
         return (utils.gradient_norm(agents, iteration=-1),)
 
 
-class XError(TableMetric):
+class XError(TableMetric[Cost]):
     r"""
     X error per agent as defined below.
 
@@ -96,14 +110,14 @@ class XError(TableMetric):
 
     table_description: str = "x error"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], problem: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [
             float(la.norm(iop.to_numpy(problem.x_optimal) - iop.to_numpy(a.x_history[max(a.x_history)])))
             for a in agents
         ]
 
 
-class AsymptoticConvergenceOrder(TableMetric):
+class AsymptoticConvergenceOrder(TableMetric[Cost]):
     """
     Asymptotic convergence order per agent as defined below.
 
@@ -112,11 +126,11 @@ class AsymptoticConvergenceOrder(TableMetric):
 
     table_description: str = "asymptotic convergence order"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], problem: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [utils.asymptotic_convergence_rate_and_order(a, problem)[1] for a in agents]
 
 
-class AsymptoticConvergenceRate(TableMetric):
+class AsymptoticConvergenceRate(TableMetric[Cost]):
     """
     Asymptotic convergence rate per agent as defined below.
 
@@ -125,11 +139,11 @@ class AsymptoticConvergenceRate(TableMetric):
 
     table_description: str = "asymptotic convergence rate"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], problem: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [utils.asymptotic_convergence_rate_and_order(a, problem)[0] for a in agents]
 
 
-class IterativeConvergenceOrder(TableMetric):
+class IterativeConvergenceOrder(TableMetric[Cost]):
     """
     Iterative convergence order per agent as defined below.
 
@@ -138,11 +152,11 @@ class IterativeConvergenceOrder(TableMetric):
 
     table_description: str = "iterative convergence order"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], problem: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [utils.iterative_convergence_rate_and_order(a, problem)[1] for a in agents]
 
 
-class IterativeConvergenceRate(TableMetric):
+class IterativeConvergenceRate(TableMetric[Cost]):
     """
     Iterative convergence rate per agent as defined below.
 
@@ -151,83 +165,83 @@ class IterativeConvergenceRate(TableMetric):
 
     table_description: str = "iterative convergence rate"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], problem: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [utils.iterative_convergence_rate_and_order(a, problem)[0] for a in agents]
 
 
-class XUpdates(TableMetric):
+class XUpdates(TableMetric[Cost]):
     """Number of iterations/updates of x per agent."""
 
     table_description: str = "nr x updates"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], _: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [a.n_x_updates for a in agents]
 
 
-class FunctionCalls(TableMetric):
+class FunctionCalls(TableMetric[Cost]):
     """Number of cost function evaluate calls per agent."""
 
     table_description: str = "nr function calls"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], _: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [a.n_function_calls for a in agents]
 
 
-class GradientCalls(TableMetric):
+class GradientCalls(TableMetric[Cost]):
     """Number of cost function gradient calls per agent."""
 
     table_description: str = "nr gradient calls"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], _: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [a.n_gradient_calls for a in agents]
 
 
-class HessianCalls(TableMetric):
+class HessianCalls(TableMetric[Cost]):
     """Number of cost function hessian calls per agent."""
 
     table_description: str = "nr hessian calls"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], _: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [a.n_hessian_calls for a in agents]
 
 
-class ProximalCalls(TableMetric):
+class ProximalCalls(TableMetric[Cost]):
     """Number of cost function proximal calls per agent."""
 
     table_description: str = "nr proximal calls"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], _: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [a.n_proximal_calls for a in agents]
 
 
-class SentMessages(TableMetric):
+class SentMessages(TableMetric[Cost]):
     """Number of sent messages per agent."""
 
     table_description: str = "nr sent messages"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], _: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [a.n_sent_messages for a in agents]
 
 
-class ReceivedMessages(TableMetric):
+class ReceivedMessages(TableMetric[Cost]):
     """Number of received messages per agent."""
 
     table_description: str = "nr received messages"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], _: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [a.n_received_messages for a in agents]
 
 
-class SentMessagesDropped(TableMetric):
+class SentMessagesDropped(TableMetric[Cost]):
     """Number of sent messages that were dropped per agent."""
 
     table_description: str = "nr sent messages dropped"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[float]:  # noqa: D102
+    def get_data_from_trial(self, agents: list[AgentMetricsView[Cost]], _: BenchmarkProblem[Any]) -> list[float]:  # noqa: D102
         return [a.n_sent_messages_dropped for a in agents]
 
 
-DEFAULT_TABLE_METRICS = [
+DEFAULT_TABLE_METRICS = (
     Regret([utils.single]),
     GradientNorm([utils.single]),
     XError([min, np.average, max]),
@@ -243,7 +257,7 @@ DEFAULT_TABLE_METRICS = [
     SentMessages([np.average, sum]),
     ReceivedMessages([np.average, sum]),
     SentMessagesDropped([np.average, sum]),
-]
+)
 """
 - :class:`Regret` - :func:`~.metric_utils.single`
 - :class:`GradientNorm` - :func:`~.metric_utils.single`
@@ -269,9 +283,9 @@ TABLE_METRICS_DOC_LINK = "https://decent-bench.readthedocs.io/en/latest/api/dece
 
 
 def tabulate(
-    resulting_agent_states: dict[Algorithm, list[list[AgentMetricsView]]],
-    problem: BenchmarkProblem,
-    metrics: list[TableMetric],
+    resulting_agent_states: dict[Algorithm[Any], list[list[AgentMetricsView[Any]]]],
+    problem: BenchmarkProblem[Any],
+    metrics: tuple[TableMetric[Any], ...],
     confidence_level: float,
     table_fmt: Literal["grid", "latex"],
 ) -> None:
@@ -316,7 +330,9 @@ def tabulate(
 
 
 def _data_per_trial(
-    agents_per_trial: list[list[AgentMetricsView]], problem: BenchmarkProblem, metric: TableMetric
+    agents_per_trial: list[list[AgentMetricsView[Any]]],
+    problem: BenchmarkProblem[Any],
+    metric: TableMetric[Any],
 ) -> list[Sequence[float]]:
     data_per_trial: list[Sequence[float]] = []
     for agents in agents_per_trial:

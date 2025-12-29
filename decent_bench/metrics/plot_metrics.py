@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any, Generic
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,8 +14,10 @@ from matplotlib.figure import Figure
 import decent_bench.metrics.metric_utils as utils
 from decent_bench.agents import AgentMetricsView
 from decent_bench.benchmark_problem import BenchmarkProblem
+from decent_bench.costs import FunctionCost, GradientCost
 from decent_bench.distributed_algorithms import Algorithm
 from decent_bench.utils.logger import LOGGER
+from decent_bench.utils.types import CF_contra
 
 X = float
 Y = float
@@ -31,7 +34,7 @@ class ComputationalCost:
     communication: float = 1.0
 
 
-class PlotMetric(ABC):
+class PlotMetric(ABC, Generic[CF_contra]):  # noqa: UP046
     """
     Metric to plot at the end of the benchmarking execution.
 
@@ -51,11 +54,15 @@ class PlotMetric(ABC):
         """Label for the y-axis."""
 
     @abstractmethod
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> Sequence[tuple[X, Y]]:
+    def get_data_from_trial(
+        self,
+        agents: list[AgentMetricsView[CF_contra]],
+        problem: BenchmarkProblem[CF_contra],
+    ) -> Sequence[tuple[X, Y]]:
         """Extract trial data in the form of (x, y) datapoints."""
 
 
-class RegretPerIteration(PlotMetric):
+class RegretPerIteration(PlotMetric[FunctionCost]):
     r"""
     Global regret (y-axis) per iteration (x-axis).
 
@@ -70,12 +77,16 @@ class RegretPerIteration(PlotMetric):
 
     plot_description: str = "regret"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], problem: BenchmarkProblem) -> list[tuple[X, Y]]:  # noqa: D102
+    def get_data_from_trial(  # noqa: D102
+        self,
+        agents: list[AgentMetricsView[FunctionCost]],
+        problem: BenchmarkProblem[Any],
+    ) -> list[tuple[X, Y]]:
         # Determine the set of recorded iterations common to all agents and use those
         return [(i, utils.regret(agents, problem, i)) for i in utils.common_sorted_iterations(agents)]
 
 
-class GradientNormPerIteration(PlotMetric):
+class GradientNormPerIteration(PlotMetric[GradientCost]):
     r"""
     Global gradient norm (y-axis) per iteration (x-axis).
 
@@ -90,15 +101,19 @@ class GradientNormPerIteration(PlotMetric):
 
     plot_description: str = "gradient norm"
 
-    def get_data_from_trial(self, agents: list[AgentMetricsView], _: BenchmarkProblem) -> list[tuple[X, Y]]:  # noqa: D102
+    def get_data_from_trial(  # noqa: D102
+        self,
+        agents: list[AgentMetricsView[GradientCost]],
+        _: BenchmarkProblem[Any],
+    ) -> list[tuple[X, Y]]:
         # Determine the set of recorded iterations common to all agents and use those
         return [(i, utils.gradient_norm(agents, i)) for i in utils.common_sorted_iterations(agents)]
 
 
-DEFAULT_PLOT_METRICS = [
+DEFAULT_PLOT_METRICS = (
     RegretPerIteration(x_log=False, y_log=True),
     GradientNormPerIteration(x_log=False, y_log=True),
-]
+)
 """
 - :class:`RegretPerIteration` (semi-log)
 - :class:`GradientNormPerIteration` (semi-log)
@@ -131,9 +146,9 @@ STYLES = ["-", ":", "--", "-.", (5, (10, 3)), (0, (5, 10)), (0, (3, 1, 1, 1))]
 
 
 def plot(  # noqa: PLR0917
-    resulting_agent_states: dict[Algorithm, list[list[AgentMetricsView]]],
-    problem: BenchmarkProblem,
-    metrics: list[PlotMetric],
+    resulting_agent_states: dict[Algorithm[Any], list[list[AgentMetricsView[Any]]]],
+    problem: BenchmarkProblem[Any],
+    metrics: tuple[PlotMetric[Any], ...],
     computational_cost: ComputationalCost | None,
     x_axis_scaling: float = 1e-4,
     compare_iterations_and_computational_cost: bool = False,
@@ -234,7 +249,7 @@ def plot(  # noqa: PLR0917
 
 
 def _create_metric_subplots(
-    metrics: list[PlotMetric],
+    metrics: tuple[PlotMetric[Any], ...],
     use_cost: bool,
     compare_iterations_and_computational_cost: bool,
     plot_grid: bool,
@@ -330,8 +345,8 @@ def _plot(  # noqa: PLR0917
     computational_cost: ComputationalCost | None,
     compare_iterations_and_computational_cost: bool,
     x_axis_scaling: float,
-    agent_states: list[list[AgentMetricsView]],
-    alg: Algorithm,
+    agent_states: list[list[AgentMetricsView[Any]]],
+    alg: Algorithm[Any],
     metric_index: int,
     iteration: int,
 ) -> None:
@@ -397,7 +412,7 @@ def _get_marker_style_color(
     return MARKERS[marker_idx], STYLES[style_idx], COLORS[color_idx]
 
 
-def _calc_total_cost(agent_states: list[list[AgentMetricsView]], computational_cost: ComputationalCost) -> float:
+def _calc_total_cost(agent_states: list[list[AgentMetricsView[Any]]], computational_cost: ComputationalCost) -> float:
     mean_function_calls = np.mean([a.n_function_calls for agents in agent_states for a in agents])
     mean_gradient_calls = np.mean([a.n_gradient_calls for agents in agent_states for a in agents])
     mean_hessian_calls = np.mean([a.n_hessian_calls for agents in agent_states for a in agents])
@@ -414,7 +429,9 @@ def _calc_total_cost(agent_states: list[list[AgentMetricsView]], computational_c
 
 
 def _get_data_per_trial(
-    agents_per_trial: list[list[AgentMetricsView]], problem: BenchmarkProblem, metric: PlotMetric
+    agents_per_trial: list[list[AgentMetricsView[Any]]],
+    problem: BenchmarkProblem[Any],
+    metric: PlotMetric[Any],
 ) -> list[Sequence[tuple[X, Y]]]:
     data_per_trial: list[Sequence[tuple[X, Y]]] = []
     for agents in agents_per_trial:

@@ -1,7 +1,7 @@
 from abc import ABC
 from collections.abc import Mapping, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Generic
 
 import networkx as nx
 import numpy as np
@@ -11,14 +11,15 @@ from decent_bench.agents import Agent
 from decent_bench.benchmark_problem import BenchmarkProblem
 from decent_bench.schemes import CompressionScheme, DropScheme, NoiseScheme
 from decent_bench.utils.array import Array
+from decent_bench.utils.types import CF
 
 if TYPE_CHECKING:
-    AgentGraph = nx.Graph[Agent]
+    AgentGraph = nx.Graph[Agent[Any]]
 else:
     AgentGraph = nx.Graph
 
 
-class Network(ABC):  # noqa: B024
+class Network(ABC, Generic[CF]):  # noqa: UP046
     """Base network object defining communication logic shared by all network types."""
 
     def __init__(
@@ -43,11 +44,11 @@ class Network(ABC):  # noqa: B024
         """Alias for the underlying graph."""
         return self.graph
 
-    def agents(self) -> list[Agent]:
+    def agents(self) -> list[Agent[CF]]:
         """Get all agents in the network."""
         return list(self.graph)
 
-    def active_agents(self, iteration: int) -> list[Agent]:
+    def active_agents(self, iteration: int) -> list[Agent[CF]]:
         """
         Get all active agents.
 
@@ -56,11 +57,11 @@ class Network(ABC):  # noqa: B024
         """
         return [a for a in self.agents() if a._activation.is_active(iteration)]  # noqa: SLF001
 
-    def connected_agents(self, agent: Agent) -> list[Agent]:
+    def connected_agents(self, agent: Agent[CF]) -> list[Agent[CF]]:
         """Agents directly connected to ``agent`` in the underlying graph."""
         return list(self.graph.neighbors(agent))
 
-    def _send_one(self, sender: Agent, receiver: Agent, msg: Array) -> None:
+    def _send_one(self, sender: Agent[CF], receiver: Agent[CF], msg: Array) -> None:
         """
         Send message to an agent.
 
@@ -82,8 +83,8 @@ class Network(ABC):  # noqa: B024
 
     def send(
         self,
-        sender: Agent,
-        receiver: Agent | Sequence[Agent] | None = None,
+        sender: Agent[CF],
+        receiver: Agent[CF] | Sequence[Agent[CF]] | None = None,
         msg: Array | None = None,
     ) -> None:
         """
@@ -121,7 +122,7 @@ class Network(ABC):  # noqa: B024
         for r in receiver:
             self._send_one(sender=sender, receiver=r, msg=msg)
 
-    def _receive_one(self, receiver: Agent, sender: Agent) -> None:
+    def _receive_one(self, receiver: Agent[CF], sender: Agent[CF]) -> None:
         """
         Receive message from an agent.
 
@@ -134,7 +135,7 @@ class Network(ABC):  # noqa: B024
             receiver._received_messages[sender] = msg  # noqa: SLF001
             self.graph.edges[sender, receiver][str(receiver.id)] = None
 
-    def receive(self, receiver: Agent, sender: Agent | Sequence[Agent] | None = None) -> None:
+    def receive(self, receiver: Agent[CF], sender: Agent[CF] | Sequence[Agent[CF]] | None = None) -> None:
         """
         Receive message(s) at an agent.
 
@@ -166,7 +167,7 @@ class Network(ABC):  # noqa: B024
             self._receive_one(receiver=receiver, sender=s)
 
 
-class P2PNetwork(Network):
+class P2PNetwork(Network[CF]):
     """Peer-to-peer network architecture where agents communicate directly with each other."""
 
     def __init__(
@@ -243,20 +244,20 @@ class P2PNetwork(Network):
 
         return iop.to_array(A, agents[0].cost.framework, agents[0].cost.device)
 
-    def neighbors(self, agent: Agent) -> list[Agent]:
+    def neighbors(self, agent: Agent[CF]) -> list[Agent[CF]]:
         """Alias for :meth:`~decent_bench.networks.Network.connected_agents`."""
         return super().connected_agents(agent)
 
-    def broadcast(self, sender: Agent, msg: Array) -> None:
+    def broadcast(self, sender: Agent[CF], msg: Array) -> None:
         """Send to all neighbors (alias for :meth:`~decent_bench.networks.Network.send` with ``receiver=None``)."""
         self.send(sender=sender, receiver=None, msg=msg)
 
-    def receive_all(self, receiver: Agent) -> None:
+    def receive_all(self, receiver: Agent[CF]) -> None:
         """Receive from all neighbors (alias for Network.receive with sender=None)."""
         self.receive(receiver=receiver, sender=None)
 
 
-class FedNetwork(Network):
+class FedNetwork(Network[CF]):
     """Federated learning network with one server node connected to all client nodes (star topology)."""
 
     def __init__(
@@ -274,7 +275,7 @@ class FedNetwork(Network):
         )
         self._server = self._identify_server()
 
-    def _identify_server(self) -> Agent:
+    def _identify_server(self) -> Agent[CF]:
         degrees = dict(self.graph.degree())
         if not degrees:
             raise ValueError("FedNetwork requires at least one agent")
@@ -285,37 +286,37 @@ class FedNetwork(Network):
         return server
 
     @property
-    def server(self) -> Agent:
+    def server(self) -> Agent[CF]:
         """Agent acting as the central server."""
         return self._server
 
     @property
-    def coordinator(self) -> Agent:
+    def coordinator(self) -> Agent[CF]:
         """Alias for :attr:`server`."""
         return self.server
 
-    def agents(self) -> list[Agent]:
+    def agents(self) -> list[Agent[CF]]:
         """Get all client agents (excludes the server/coordinator)."""
         return [agent for agent in self.graph if agent is not self.server]
 
-    def active_agents(self, iteration: int) -> list[Agent]:
+    def active_agents(self, iteration: int) -> list[Agent[CF]]:
         """Get all active client agents (excludes the server/coordinator)."""
         # Delegates to Network.active_agents(), which iterates over self.agents() (clients only for FedNetwork).
         return super().active_agents(iteration)
 
     @property
-    def clients(self) -> list[Agent]:
+    def clients(self) -> list[Agent[CF]]:
         """Alias for :meth:`agents`."""
         return self.agents()
 
-    def active_clients(self, iteration: int) -> list[Agent]:
+    def active_clients(self, iteration: int) -> list[Agent[CF]]:
         """Alias for :meth:`active_agents`."""
         return self.active_agents(iteration)
 
     def send(
         self,
-        sender: Agent,
-        receiver: Agent | Sequence[Agent] | None = None,
+        sender: Agent[CF],
+        receiver: Agent[CF] | Sequence[Agent[CF]] | None = None,
         msg: Array | None = None,
     ) -> None:
         """
@@ -347,7 +348,7 @@ class FedNetwork(Network):
             raise ValueError("All receivers must be clients")
         super().send(sender=sender, receiver=receiver, msg=msg)
 
-    def receive(self, receiver: Agent, sender: Agent | Sequence[Agent] | None = None) -> None:
+    def receive(self, receiver: Agent[CF], sender: Agent[CF] | Sequence[Agent[CF]] | None = None) -> None:
         """
         Receive message(s) in a federated learning network.
 
@@ -376,7 +377,7 @@ class FedNetwork(Network):
             raise ValueError("All senders must be clients")
         super().receive(receiver=receiver, sender=sender)
 
-    def send_to_client(self, client: Agent, msg: Array) -> None:
+    def send_to_client(self, client: Agent[CF], msg: Array) -> None:
         """
         Send a message from the server to a specific client.
 
@@ -392,7 +393,7 @@ class FedNetwork(Network):
         """Send the same message from the server to every client (synchronous FL push)."""
         self.send(sender=self.server, receiver=None, msg=msg)
 
-    def send_from_client(self, client: Agent, msg: Array) -> None:
+    def send_from_client(self, client: Agent[CF], msg: Array) -> None:
         """
         Send a message from a client to the server.
 
@@ -404,7 +405,7 @@ class FedNetwork(Network):
             raise ValueError("Sender must be a client")
         self.send(sender=client, receiver=self.server, msg=msg)
 
-    def send_from_all_clients(self, msgs: Mapping[Agent, Array]) -> None:
+    def send_from_all_clients(self, msgs: Mapping[Agent[CF], Array]) -> None:
         """
         Send messages from each client to the server (synchronous FL push).
 
@@ -426,7 +427,7 @@ class FedNetwork(Network):
         for client, msg in msgs.items():
             self.send_from_client(client, msg)
 
-    def receive_at_client(self, client: Agent) -> None:
+    def receive_at_client(self, client: Agent[CF]) -> None:
         """
         Receive a message at a client from the server.
 
@@ -443,7 +444,7 @@ class FedNetwork(Network):
         for client in self.clients:
             self.receive_at_client(client)
 
-    def receive_from_client(self, client: Agent) -> None:
+    def receive_from_client(self, client: Agent[CF]) -> None:
         """
         Receive a message at the server from a specific client.
 
@@ -460,7 +461,7 @@ class FedNetwork(Network):
         self.receive(receiver=self.server, sender=None)
 
 
-def create_distributed_network(problem: BenchmarkProblem) -> P2PNetwork:
+def create_distributed_network(problem: BenchmarkProblem[CF]) -> P2PNetwork[CF]:
     """
     Create a distributed network - a network with peer-to-peer communication only, no coordinator.
 
@@ -493,7 +494,7 @@ def create_distributed_network(problem: BenchmarkProblem) -> P2PNetwork:
     )
 
 
-def create_federated_network(problem: BenchmarkProblem) -> FedNetwork:
+def create_federated_network(problem: BenchmarkProblem[CF]) -> FedNetwork[CF]:
     """
     Create a federated learning network with a single server and multiple clients (star topology).
 

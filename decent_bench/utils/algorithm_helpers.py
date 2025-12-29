@@ -1,9 +1,11 @@
+from typing import Any
+
 import decent_bench.utils.interoperability as iop
 from decent_bench.networks import P2PNetwork
 from decent_bench.utils.array import Array
 
 
-def zero_initialization(x0: Array | None, network: P2PNetwork, stacked_copies: int | None = None) -> Array:
+def zero_initialization(x0: Array | None, network: P2PNetwork[Any], stacked_copies: int | None = None) -> Array:
     """
     Initialize the variable to zero if x0 is None.
 
@@ -36,7 +38,7 @@ def zero_initialization(x0: Array | None, network: P2PNetwork, stacked_copies: i
 
 def randn_initialization(
     x0: Array | None,
-    network: P2PNetwork,
+    network: P2PNetwork[Any],
     stacked_copies: int | None = None,
     mean: float = 0.0,
     std: float = 1.0,
