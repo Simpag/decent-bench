@@ -39,9 +39,6 @@ SuperMethod = TypeVar("SuperMethod", bound=Callable[..., Any])
 CF = TypeVar("CF", bound="decent_bench.costs.Cost")
 """Type variable for cost functions."""
 
-CF_co = TypeVar("CF_co", bound="decent_bench.costs.Cost", covariant=True)
-"""Covariant type variable for cost functions."""
-
 CF_contra = TypeVar("CF_contra", bound="decent_bench.costs.Cost", contravariant=True)
 """Contravariant type variable for cost functions."""
 
