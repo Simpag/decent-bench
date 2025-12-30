@@ -180,23 +180,29 @@ class HessianProximalCost(HessianCost, ProximalCost, ABC):
     """Cost function with hessian and proximal methods."""
 
 
-class FunctionGradientHessianCost(FunctionGradientCost, HessianCost, ABC):
+class FunctionGradientHessianCost(FunctionGradientCost, FunctionHessianCost, GradientHessianCost, ABC):
     """Cost function with function, gradient and hessian methods."""
 
 
-class FunctionGradientProximalCost(FunctionGradientCost, ProximalCost, ABC):
+class FunctionGradientProximalCost(FunctionGradientCost, FunctionProximalCost, GradientProximalCost, ABC):
     """Cost function with function, gradient and proximal methods."""
 
 
-class FunctionHessianProximalCost(FunctionHessianCost, ProximalCost, ABC):
+class FunctionHessianProximalCost(FunctionHessianCost, FunctionProximalCost, HessianProximalCost, ABC):
     """Cost function with function, hessian and proximal methods."""
 
 
-class GradientHessianProximalCost(GradientHessianCost, ProximalCost, ABC):
+class GradientHessianProximalCost(GradientHessianCost, GradientProximalCost, HessianProximalCost, ABC):
     """Cost function with gradient, hessian and proximal methods."""
 
 
-class FunctionGradientHessianProximalCost(FunctionGradientCost, HessianProximalCost, ABC):
+class FunctionGradientHessianProximalCost(
+    FunctionGradientHessianCost,
+    FunctionGradientProximalCost,
+    FunctionHessianProximalCost,
+    GradientHessianProximalCost,
+    ABC,
+):
     """Cost function with function, gradient, hessian and proximal methods."""
 
 
