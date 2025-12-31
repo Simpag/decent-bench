@@ -9,14 +9,16 @@ from typing import TYPE_CHECKING, Any, Literal, get_args, get_origin
 
 from rich.status import Status
 
+from decent_bench.abstracts.algorithm import Algorithm
+from decent_bench.abstracts.cost import Cost
+from decent_bench.abstracts.plot_metric import PlotMetric
+from decent_bench.abstracts.table_metric import TableMetric
 from decent_bench.agents import AgentMetricsView
 from decent_bench.benchmark_problem import BenchmarkProblem
-from decent_bench.costs import Cost
-from decent_bench.distributed_algorithms import Algorithm
 from decent_bench.metrics import plot_metrics as pm
 from decent_bench.metrics import table_metrics as tm
-from decent_bench.metrics.plot_metrics import DEFAULT_PLOT_METRICS, PlotMetric
-from decent_bench.metrics.table_metrics import DEFAULT_TABLE_METRICS, TableMetric
+from decent_bench.metrics.plot_metrics import DEFAULT_PLOT_METRICS
+from decent_bench.metrics.table_metrics import DEFAULT_TABLE_METRICS
 from decent_bench.networks import P2PNetwork, create_distributed_network
 from decent_bench.utils import logger
 from decent_bench.utils.logger import LOGGER

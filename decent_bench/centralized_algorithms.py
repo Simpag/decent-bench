@@ -6,7 +6,7 @@ import decent_bench.utils.interoperability as iop
 from decent_bench.utils.array import Array
 
 if TYPE_CHECKING:
-    from decent_bench.costs import GradientCost
+    from decent_bench.abstracts.cost import GradientCost
 
 
 def gradient_descent(

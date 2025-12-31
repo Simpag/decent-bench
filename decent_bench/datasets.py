@@ -1,23 +1,8 @@
-from abc import ABC, abstractmethod
-from collections.abc import Sequence
-from typing import TypeAlias
-
 from sklearn import datasets
 
 import decent_bench.utils.interoperability as iop
-from decent_bench.utils.array import Array
+from decent_bench.abstracts.dataset import Dataset, DatasetPartition
 from decent_bench.utils.types import SupportedDevices, SupportedFrameworks
-
-DatasetPartition: TypeAlias = tuple[Array, Array]  # noqa: UP040
-"""Tuple of (A, b) representing one dataset partition."""
-
-
-class Dataset(ABC):
-    """Dataset containing partitions in the form of feature matrix A and target vector b."""
-
-    @abstractmethod
-    def training_partitions(self) -> Sequence[DatasetPartition]:
-        """Partitions used for finding the optimal optimization variable x."""
 
 
 class SyntheticClassificationData(Dataset):

@@ -1,6 +1,5 @@
 import math
 import warnings
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -12,10 +11,11 @@ from matplotlib.axes import Axes as SubPlot
 from matplotlib.figure import Figure
 
 import decent_bench.metrics.metric_utils as utils
+from decent_bench.abstracts.algorithm import Algorithm
+from decent_bench.abstracts.cost import Cost, FunctionCost, GradientCost
+from decent_bench.abstracts.plot_metric import PlotMetric
 from decent_bench.agents import AgentMetricsView
 from decent_bench.benchmark_problem import BenchmarkProblem
-from decent_bench.costs import Cost, FunctionCost, GradientCost
-from decent_bench.distributed_algorithms import Algorithm
 from decent_bench.utils.logger import LOGGER
 
 X = float
@@ -31,34 +31,6 @@ class ComputationalCost:
     hessian: float = 1.0
     proximal: float = 1.0
     communication: float = 1.0
-
-
-class PlotMetric[CF: Cost](ABC):
-    """
-    Metric to plot at the end of the benchmarking execution.
-
-    Args:
-        x_log: whether to apply log scaling to the x-axis.
-        y_log: whether to apply log scaling to the y-axis.
-
-    """
-
-    def __init__(self, *, x_log: bool = False, y_log: bool = True):
-        self.x_log = x_log
-        self.y_log = y_log
-
-    @property
-    @abstractmethod
-    def plot_description(self) -> str:
-        """Label for the y-axis."""
-
-    @abstractmethod
-    def get_data_from_trial(
-        self,
-        agents: list[AgentMetricsView[CF]],
-        problem: BenchmarkProblem[CF],
-    ) -> Sequence[tuple[X, Y]]:
-        """Extract trial data in the form of (x, y) datapoints."""
 
 
 class RegretPerIteration(PlotMetric[FunctionCost]):

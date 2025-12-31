@@ -12,7 +12,7 @@ from ._functions import to_array_like, to_jax, to_numpy, to_tensorflow, to_torch
 from ._helpers import framework_device_of_array
 
 if TYPE_CHECKING:
-    from decent_bench import costs
+    from decent_bench.abstracts.cost import Cost
 
 
 def _get_converter(framework: SupportedFrameworks) -> Callable[[Array | Any, SupportedDevices], Any]:
@@ -60,7 +60,7 @@ def autodecorate_cost_method[SuperMethod: Callable[..., Any]](
             return_type_annotation = None
 
         @wraps(func)
-        def wrapper(self: costs.Cost, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+        def wrapper(self: Cost, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
             converter = _get_converter(self.framework)
 
             if len(args) > 0:

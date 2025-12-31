@@ -6,8 +6,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import decent_bench.utils.interoperability as iop
-from decent_bench.costs import Cost, FunctionCost, GradientCost, HessianCost, ProximalCost
-from decent_bench.schemes import AgentActivationScheme
+from decent_bench.abstracts.cost import Cost, FunctionCost, GradientCost, HessianCost, ProximalCost
+from decent_bench.abstracts.scheme import AgentActivationScheme
 from decent_bench.utils.array import Array
 
 
