@@ -1,5 +1,4 @@
 from decent_bench import (
-    abstracts,
     agents,
     benchmark,
     benchmark_problem,
@@ -10,11 +9,9 @@ from decent_bench import (
     metrics,
     networks,
     schemes,
-    utils,
 )
 
 __all__ = [
-    "abstracts",
     "agents",
     "benchmark",
     "benchmark_problem",
@@ -25,5 +22,4 @@ __all__ = [
     "metrics",
     "networks",
     "schemes",
-    "utils",
 ]

@@ -1,5 +1,5 @@
 import decent_bench.utils.interoperability as iop
-from decent_bench.abstracts.cost import Cost
+from decent_bench.costs import Cost
 from decent_bench.networks import P2PNetwork
 from decent_bench.utils.array import Array
 

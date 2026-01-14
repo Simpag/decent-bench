@@ -7,12 +7,21 @@ from typing import TYPE_CHECKING, Any, Generic, cast
 import networkx as nx
 
 import decent_bench.centralized_algorithms as ca
-from decent_bench.abstracts.scheme import AgentActivationScheme, CompressionScheme, DropScheme, NoiseScheme
 from decent_bench.datasets import SyntheticClassificationData
-from decent_bench.schemes.activation import AlwaysActive, UniformActivationRate
-from decent_bench.schemes.compression import NoCompression, Quantization
-from decent_bench.schemes.drop import NoDrops, UniformDropRate
-from decent_bench.schemes.noise import GaussianNoise, NoNoise
+from decent_bench.schemes import (
+    AgentActivationScheme,
+    AlwaysActive,
+    CompressionScheme,
+    DropScheme,
+    GaussianNoise,
+    NoCompression,
+    NoDrops,
+    NoiseScheme,
+    NoNoise,
+    Quantization,
+    UniformActivationRate,
+    UniformDropRate,
+)
 from decent_bench.utils.array import Array
 from decent_bench.utils.types import CF_co, CF_regression, SupportedDevices, SupportedFrameworks
 

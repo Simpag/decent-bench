@@ -35,13 +35,13 @@ Includes single indices, tuples of indices, slices, and tuples of slices.
 SuperMethod = TypeVar("SuperMethod", bound=Callable[..., Any])
 """Type variable for methods of a superclass used in decorators."""
 
-CF = TypeVar("CF", bound="decent_bench.abstracts.cost.Cost")
+CF = TypeVar("CF", bound="decent_bench.costs.Cost")
 """Type variable for cost functions."""
 
-CF_co = TypeVar("CF_co", bound="decent_bench.abstracts.cost.Cost", covariant=True)
+CF_co = TypeVar("CF_co", bound="decent_bench.costs.Cost", covariant=True)
 """Covariant type variable for cost functions."""
 
-CF_contra = TypeVar("CF_contra", bound="decent_bench.abstracts.cost.Cost", contravariant=True)
+CF_contra = TypeVar("CF_contra", bound="decent_bench.costs.Cost", contravariant=True)
 """Contravariant type variable for cost functions."""
 
 CF_regression = TypeVar(
@@ -50,16 +50,16 @@ CF_regression = TypeVar(
 )
 """Type variable for regression cost functions."""
 
-CF_func = TypeVar("CF_func", bound="decent_bench.abstracts.cost.FunctionCost")
+CF_func = TypeVar("CF_func", bound="decent_bench.costs.FunctionCost")
 """Type variable for function cost functions."""
 
-CF_grad = TypeVar("CF_grad", bound="decent_bench.abstracts.cost.GradientCost")
+CF_grad = TypeVar("CF_grad", bound="decent_bench.costs.GradientCost")
 """Type variable for gradient cost functions."""
 
-CF_hess = TypeVar("CF_hess", bound="decent_bench.abstracts.cost.HessianCost")
+CF_hess = TypeVar("CF_hess", bound="decent_bench.costs.HessianCost")
 """Type variable for Hessian cost functions."""
 
-CF_prox = TypeVar("CF_prox", bound="decent_bench.abstracts.cost.ProximalCost")
+CF_prox = TypeVar("CF_prox", bound="decent_bench.costs.ProximalCost")
 """Type variable for proximal cost functions."""
 
 
