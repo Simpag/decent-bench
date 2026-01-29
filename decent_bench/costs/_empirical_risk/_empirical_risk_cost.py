@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from functools import cached_property
-from typing import Any
+from typing import Any, Literal, overload, override
 
 import numpy as np
 
@@ -65,7 +65,8 @@ class EmpiricalRiskCost(Cost, ABC):
 
     @cached_property
     def _rand(self) -> np.random.Generator:
-        return np.random.default_rng(seed=0)  # Later replace with global rng
+        # Later replace with global rng and return Generic generator to support other frameworks
+        return np.random.default_rng(seed=0)
 
     @abstractmethod
     def predict(self, x: Array, data: list[Array]) -> Array:
@@ -111,6 +112,23 @@ class EmpiricalRiskCost(Cost, ABC):
             - list[int]: corresponding datapoints are used.
             - "all": the full dataset is used.
             - "batch": a batch is drawn with :attr:`batch_size` samples.
+
+        """
+
+    @abstractmethod
+    def per_sample_gradients(self, x: Array, indices: EmpiricalRiskIndices = "batch") -> dict[int, Array]:
+        """
+        Compute per-sample gradients for the specified indices.
+
+        Supported values for indices are:
+            - int: the corresponding datapoint is used.
+            - list[int]: corresponding datapoints are used.
+            - "all": the full dataset is used.
+            - "batch": a batch is drawn with :attr:`batch_size` samples.
+
+        Returns:
+            Dictionary mapping sample index to its gradient.
+
         """
 
     @abstractmethod
@@ -181,7 +199,7 @@ class EmpiricalRiskCost(Cost, ABC):
             # Use full dataset
             self._last_batch_used = list(range(self.n_samples))
         elif indices == "batch":
-            if self.batch_size is not None and self.batch_size < self.n_samples:
+            if self.batch_size < self.n_samples:
                 # Sample a random batch
                 sample: list[int] = self._rand.choice(self.n_samples, size=self.batch_size, replace=False).tolist()
                 self._last_batch_used = sample

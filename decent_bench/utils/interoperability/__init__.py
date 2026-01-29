@@ -39,7 +39,7 @@ from ._functions import (
     zeros,
     zeros_like,
 )
-from ._helpers import framework_device_of_array
+from ._helpers import device_to_framework_device, framework_device_of_array
 from ._operators import (
     absolute,
     add,
@@ -96,6 +96,7 @@ __all__ = [  # noqa: RUF022
     "sqrt",
     "sub",
     # From _helpers
+    "device_to_framework_device",
     "framework_device_of_array",
     # From _decorators
     "autodecorate_cost_method",

@@ -12,7 +12,7 @@ from decent_bench.costs._base._cost import Cost
 from decent_bench.costs._base._sum_cost import SumCost
 from decent_bench.costs._empirical_risk._empirical_risk_cost import EmpiricalRiskCost
 from decent_bench.utils.array import Array
-from decent_bench.utils.types import EmpiricalRiskIndices, SupportedDevices, SupportedFrameworks
+from decent_bench.utils.types import EmpiricalRiskBatchSize, EmpiricalRiskIndices, SupportedDevices, SupportedFrameworks
 
 
 class LinearRegressionCost(EmpiricalRiskCost):
@@ -42,14 +42,14 @@ class LinearRegressionCost(EmpiricalRiskCost):
     :math:`\mathbf{A}_B` and :math:`\mathbf{b}_B` are the rows corresponding to the batch :math:`\mathcal{B}`.
     """
 
-    def __init__(self, A: Array, b: Array, batch_size: int | Literal["all"] = "all"):  # noqa: N803
+    def __init__(self, A: Array, b: Array, batch_size: EmpiricalRiskBatchSize = "all"):  # noqa: N803
         """
         Initialize a LinearRegressionCost instance.
 
         Args:
             A (Array): Data matrix of shape (n_samples, shape).
             b (Array): Target vector of shape (n_samples,).
-            batch_size (int | Literal["all"]): Size of mini-batches for stochastic methods, or "all" for full-batch.
+            batch_size (EmpiricalRiskBatchSize): Size of mini-batches for stochastic methods, or "all" for full-batch.
 
         Raises:
             ValueError: If input dimensions are inconsistent or batch_size is invalid.
@@ -209,6 +209,18 @@ class LinearRegressionCost(EmpiricalRiskCost):
         A, ATA, b = self._get_batch_data(indices)  # noqa: N806
         res: NDArray[float64] = ATA.dot(x) - A.T.dot(b)
         return res
+
+    @iop.autodecorate_cost_method(EmpiricalRiskCost.per_sample_gradients)
+    def per_sample_gradients(
+        self,
+        x: NDArray[float64],
+        indices: EmpiricalRiskIndices = "batch",
+    ) -> dict[int, NDArray[float64]]:
+        A, ATA, b = self._get_batch_data(indices)  # noqa: N806
+        res_dict: dict[int, NDArray[float64]] = {}
+        for i in range(A.shape[0]):
+            res_dict[i] = ATA[i, :].reshape(-1, 1) * x - A[i, :].reshape(-1, 1) * b[i]
+        return res_dict
 
     @iop.autodecorate_cost_method(EmpiricalRiskCost.hessian)
     def hessian(self, x: NDArray[float64], indices: EmpiricalRiskIndices = "batch") -> NDArray[float64]:  # noqa: ARG002

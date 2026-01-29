@@ -14,7 +14,7 @@ import decent_bench.utils.interoperability as iop
 from decent_bench.costs._base._cost import Cost
 from decent_bench.costs._base._sum_cost import SumCost
 from decent_bench.utils.array import Array
-from decent_bench.utils.types import EmpiricalRiskIndices, SupportedDevices, SupportedFrameworks
+from decent_bench.utils.types import EmpiricalRiskBatchSize, EmpiricalRiskIndices, SupportedDevices, SupportedFrameworks
 
 from ._empirical_risk_cost import EmpiricalRiskCost
 
@@ -52,14 +52,14 @@ class LogisticRegressionCost(EmpiricalRiskCost):
     :math:`\mathbf{A}_B` and :math:`\mathbf{b}_B` are the rows corresponding to the batch :math:`\mathcal{B}`.
     """
 
-    def __init__(self, A: Array, b: Array, batch_size: int | Literal["all"] = "all"):  # noqa: N803
+    def __init__(self, A: Array, b: Array, batch_size: EmpiricalRiskBatchSize = "all"):  # noqa: N803
         """
         Initialize logistic regression cost function.
 
         Args:
             A (Array): Data matrix of shape (n_samples, shape).
             b (Array): Target vector of shape (n_samples,).
-            batch_size (int | Literal["all"]): Size of mini-batch to use for stochastic methods.
+            batch_size (EmpiricalRiskBatchSize): Size of mini-batch to use for stochastic methods.
                 If "all", full-batch methods are used.
 
         Raises:
@@ -219,6 +219,19 @@ class LogisticRegressionCost(EmpiricalRiskCost):
         sig = special.expit(A.dot(x))
         res: NDArray[float64] = A.T.dot(sig - b)
         return res
+
+    @iop.autodecorate_cost_method(EmpiricalRiskCost.per_sample_gradients)
+    def per_sample_gradients(
+        self,
+        x: NDArray[float64],
+        indices: EmpiricalRiskIndices = "batch",
+    ) -> dict[int, NDArray[float64]]:
+        A, b = self._get_batch_data(indices)  # noqa: N806
+        sig = special.expit(A.dot(x))
+        res_dict: dict[int, NDArray[float64]] = {}
+        for i in range(A.shape[0]):
+            res_dict[i] = A[i, :].reshape(-1, 1) * (sig[i] - b[i])
+        return res_dict
 
     @iop.autodecorate_cost_method(EmpiricalRiskCost.hessian)
     def hessian(self, x: NDArray[float64], indices: EmpiricalRiskIndices = "batch") -> NDArray[float64]:

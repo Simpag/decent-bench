@@ -8,9 +8,13 @@ from decent_bench.utils.types import SupportedArrayTypes, SupportedDevices, Supp
 from ._imports_types import _jnp_types, _np_types, _tf_types, _torch_types, jax, jnp, tf, torch
 
 
-def _device_literal_to_framework_device(device: SupportedDevices, framework: SupportedFrameworks) -> Any:  # noqa: ANN401
+def device_to_framework_device(device: SupportedDevices, framework: SupportedFrameworks) -> Any:  # noqa: ANN401
     """
     Convert SupportedDevices literal to framework-specific device representation.
+
+    This is used to map our SupportedDevices enum to the appropriate device
+    representation for each supported framework in order to move arrays/models to
+    the correct device for each framework.
 
     Args:
         device (SupportedDevices): Device literal ("cpu" or "gpu").
@@ -23,6 +27,9 @@ def _device_literal_to_framework_device(device: SupportedDevices, framework: Sup
         ValueError: If the framework is unsupported.
 
     """
+    if device not in SupportedDevices:
+        raise ValueError(f"Unsupported device: {device}, must be one of {list(SupportedDevices)}")
+
     if framework == SupportedFrameworks.NUMPY:
         return device  # NumPy does not have explicit device management
     if torch and framework == SupportedFrameworks.TORCH:

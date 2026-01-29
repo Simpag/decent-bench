@@ -36,6 +36,12 @@ Can be a list of integers, the string "all" for full dataset, the string "batch"
 or an integer specifying a single datapoint.
 """
 
+type EmpiricalRiskBatchSize = int | Literal["all"]
+"""
+Type alias for specifying batch size in empirical risk initialization.
+Can be an integer for mini-batch size or the string "all" for full dataset.
+"""
+
 
 class SupportedFrameworks(Enum):
     """Enum for supported frameworks in decent-bench."""
