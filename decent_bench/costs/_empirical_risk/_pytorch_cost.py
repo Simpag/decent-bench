@@ -4,13 +4,19 @@ from collections.abc import Iterator
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, cast, override
 
-from decent_bench.costs._base._sum_cost import SumCost
 import decent_bench.utils.interoperability as iop
 from decent_bench.costs._base._cost import Cost
+from decent_bench.costs._base._sum_cost import SumCost
 from decent_bench.costs._empirical_risk._empirical_risk_cost import EmpiricalRiskCost
 from decent_bench.datasets import DatasetPartition
 from decent_bench.utils.logger import LOGGER
-from decent_bench.utils.types import EmpiricalRiskBatchSize, EmpiricalRiskIndices, SupportedDevices, SupportedFrameworks
+from decent_bench.utils.types import (
+    EmpiricalRiskBatchSize,
+    EmpiricalRiskIndices,
+    EmpiricalRiskReduction,
+    SupportedDevices,
+    SupportedFrameworks,
+)
 
 if TYPE_CHECKING:
     import torch
@@ -264,7 +270,11 @@ class PyTorchCost(EmpiricalRiskCost):
         self,
         x: torch.Tensor,
         indices: EmpiricalRiskIndices = "batch",
-    ) -> torch.Tensor | dict[int, torch.Tensor]:
+        reduction: EmpiricalRiskReduction = "mean",
+    ) -> torch.Tensor:
+        if reduction is None:
+            return self._per_sample_gradients(x, indices)
+
         self._set_model_parameters(x)
         self.model.train()
 
@@ -292,8 +302,7 @@ class PyTorchCost(EmpiricalRiskCost):
         # Return concatenated gradient tensor
         return torch.cat(grads)
 
-    @iop.autodecorate_cost_method(EmpiricalRiskCost.per_sample_gradients)
-    def per_sample_gradients(self, x: torch.Tensor, indices: EmpiricalRiskIndices = "batch") -> dict[int, torch.Tensor]:
+    def _per_sample_gradients(self, x: torch.Tensor, indices: EmpiricalRiskIndices = "batch") -> torch.Tensor:
         """Compute per-sample gradients for the specified indices. May need to batch calls due to memory constraints."""
         # Credit: https://docs.pytorch.org/tutorials/intermediate/per_sample_grads.html
         self._init_per_sample_grad()
@@ -308,15 +317,15 @@ class PyTorchCost(EmpiricalRiskCost):
         ft_per_sample_grads = self._ft_compute_sample_grad(params, buffers, batch_x, batch_y)
 
         # Collect gradients and flatten them into a single tensor
-        x_shape = batch_x.shape[0]
+        batch_size = batch_x.shape[0]
         dtype = next(self.model.parameters()).dtype
         with torch.no_grad():
-            flat_grads = torch.empty((x_shape, self.total_params), device=self._pytorch_device, dtype=dtype)
+            flat_grads = torch.empty((batch_size, self.total_params), device=self._pytorch_device, dtype=dtype)
             for name, off, size in zip(self.param_names, self.param_offsets, self.param_sizes, strict=True):
-                g = ft_per_sample_grads[name].reshape(x_shape, size)
+                g = ft_per_sample_grads[name].reshape(batch_size, size)
                 flat_grads[:, off : off + size] = g
 
-        return {idx: flat_grads[i] for i, idx in enumerate(self.batch_used)}
+        return flat_grads
 
     @iop.autodecorate_cost_method(EmpiricalRiskCost.hessian)
     def hessian(self, x: torch.Tensor, indices: EmpiricalRiskIndices = "batch") -> torch.Tensor:
@@ -522,7 +531,8 @@ if __name__ == "__main__":
         dataset=mnist_train,
         loss_fn=nn.CrossEntropyLoss(),
         batch_size=32,  # 32,
-        device=SupportedDevices.GPU,
+        device=SupportedDevices.CPU,
+        # use_dataloader=True,
     )
 
     # Test batch getter
@@ -570,7 +580,7 @@ if __name__ == "__main__":
     t2 = list()
     for i in track(range(100)):
         t = time.time()
-        efficient_ind = cost_function.per_sample_gradients(x, indices)
+        efficient_ind = cost_function.gradient(x, indices, reduction=None)
         t1.append(time.time() - t)
         t = time.time()
         slow_ind = {i: cost_function.gradient(x, [i]) for i in indices}
@@ -578,6 +588,7 @@ if __name__ == "__main__":
 
     t1 = t1[25:]
     t2 = t2[25:]
+    efficient_ind = {idx: efficient_ind[i] for i, idx in enumerate(indices)}
 
     rtol = 5e-3
     atol = 1e-4

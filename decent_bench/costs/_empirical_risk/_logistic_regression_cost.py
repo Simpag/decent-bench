@@ -14,7 +14,13 @@ import decent_bench.utils.interoperability as iop
 from decent_bench.costs._base._cost import Cost
 from decent_bench.costs._base._sum_cost import SumCost
 from decent_bench.utils.array import Array
-from decent_bench.utils.types import EmpiricalRiskBatchSize, EmpiricalRiskIndices, SupportedDevices, SupportedFrameworks
+from decent_bench.utils.types import (
+    EmpiricalRiskBatchSize,
+    EmpiricalRiskIndices,
+    EmpiricalRiskReduction,
+    SupportedDevices,
+    SupportedFrameworks,
+)
 
 from ._empirical_risk_cost import EmpiricalRiskCost
 
@@ -193,7 +199,12 @@ class LogisticRegressionCost(EmpiricalRiskCost):
         return float(cost)
 
     @iop.autodecorate_cost_method(EmpiricalRiskCost.gradient)
-    def gradient(self, x: NDArray[float64], indices: EmpiricalRiskIndices = "batch") -> NDArray[float64]:
+    def gradient(
+        self,
+        x: NDArray[float64],
+        indices: EmpiricalRiskIndices = "batch",
+        reduction: EmpiricalRiskReduction = "mean",
+    ) -> NDArray[float64]:
         r"""
         Gradient at x using datapoints at the given indices.
 
@@ -215,23 +226,23 @@ class LogisticRegressionCost(EmpiricalRiskCost):
 
         where :math:`\mathbf{A}_B` and :math:`\mathbf{b}_B` are the rows corresponding to the batch :math:`\mathcal{B}`.
         """
+        if reduction is None:
+            return self._per_sample_gradients(x, indices)
+
         A, b = self._get_batch_data(indices)  # noqa: N806
         sig = special.expit(A.dot(x))
         res: NDArray[float64] = A.T.dot(sig - b)
         return res
 
-    @iop.autodecorate_cost_method(EmpiricalRiskCost.per_sample_gradients)
-    def per_sample_gradients(
+    def _per_sample_gradients(
         self,
         x: NDArray[float64],
         indices: EmpiricalRiskIndices = "batch",
-    ) -> dict[int, NDArray[float64]]:
+    ) -> NDArray[float64]:
         A, b = self._get_batch_data(indices)  # noqa: N806
         sig = special.expit(A.dot(x))
-        res_dict: dict[int, NDArray[float64]] = {}
-        for i in range(A.shape[0]):
-            res_dict[i] = A[i, :].reshape(-1, 1) * (sig[i] - b[i])
-        return res_dict
+        res = [A[i, :].reshape(-1, 1) * (sig[i] - b[i]) for i in range(A.shape[0])]
+        return np.asarray(res)
 
     @iop.autodecorate_cost_method(EmpiricalRiskCost.hessian)
     def hessian(self, x: NDArray[float64], indices: EmpiricalRiskIndices = "batch") -> NDArray[float64]:

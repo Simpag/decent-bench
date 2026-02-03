@@ -36,6 +36,13 @@ Can be a list of integers, the string "all" for full dataset, the string "batch"
 or an integer specifying a single datapoint.
 """
 
+type EmpiricalRiskReduction = Literal["mean"] | None
+"""
+Type alias for specifying reduction methods in empirical risk computations.
+Can be "mean" to average over samples or None for no reduction and the result
+is returned as a list of gradients for each sample.
+"""
+
 type EmpiricalRiskBatchSize = int | Literal["all"]
 """
 Type alias for specifying batch size in empirical risk initialization.

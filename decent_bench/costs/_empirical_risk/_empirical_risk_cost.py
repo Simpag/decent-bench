@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from functools import cached_property
-from typing import Any, Literal, overload, override
+from typing import Any
 
 import numpy as np
 
 from decent_bench.costs._base._cost import Cost
 from decent_bench.utils.array import Array
-from decent_bench.utils.types import EmpiricalRiskIndices
+from decent_bench.utils.types import EmpiricalRiskIndices, EmpiricalRiskReduction
 
 
 class EmpiricalRiskCost(Cost, ABC):
@@ -103,7 +103,13 @@ class EmpiricalRiskCost(Cost, ABC):
         return self.function(x, indices=indices, **kwargs)
 
     @abstractmethod
-    def gradient(self, x: Array, indices: EmpiricalRiskIndices = "batch", **kwargs: Any) -> Array:  # noqa: ANN401
+    def gradient(
+        self,
+        x: Array,
+        indices: EmpiricalRiskIndices = "batch",
+        reduction: EmpiricalRiskReduction = "mean",
+        **kwargs: Any,  # noqa: ANN401
+    ) -> Array:
         """
         Gradient at x using datapoints at the given indices.
 
@@ -113,21 +119,14 @@ class EmpiricalRiskCost(Cost, ABC):
             - "all": the full dataset is used.
             - "batch": a batch is drawn with :attr:`batch_size` samples.
 
-        """
+        Supported values for reduction are:
+            - "mean": average the gradients over the samples.
+            - None: return the gradients for each sample as a list.
 
-    @abstractmethod
-    def per_sample_gradients(self, x: Array, indices: EmpiricalRiskIndices = "batch") -> dict[int, Array]:
-        """
-        Compute per-sample gradients for the specified indices.
-
-        Supported values for indices are:
-            - int: the corresponding datapoint is used.
-            - list[int]: corresponding datapoints are used.
-            - "all": the full dataset is used.
-            - "batch": a batch is drawn with :attr:`batch_size` samples.
-
-        Returns:
-            Dictionary mapping sample index to its gradient.
+        Note:
+            When reduction is None, the returned array will have an additional leading dimension
+            corresponding to the number of samples used. Indexing into this dimension will give the gradient
+            for the respective sample in :prop:`batch_used`.
 
         """
 
