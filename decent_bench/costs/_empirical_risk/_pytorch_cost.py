@@ -29,7 +29,7 @@ except ImportError:
     TORCH_AVAILABLE = False
 
 
-class IndexDataset:
+class _IndexDataset:
     """A simple dataset wrapper to handle indexing when using a PyTorch dataloader."""
 
     def __init__(self, dataset: DatasetPartition):
@@ -93,6 +93,7 @@ class PyTorchCost(EmpiricalRiskCost):
             compile_model (bool): Whether to compile the model using torch.compile for performance.
                 May improve speed after warm-up. Might need to try different modes based on the model and OS,
                 use compile_kwargs. See https://pytorch.org/docs/stable/generated/torch.compile.html for details.
+            compile_kwargs (dict | None): Additional arguments for torch.compile.
 
         Raises:
             ImportError: If PyTorch is not available
@@ -123,9 +124,9 @@ class PyTorchCost(EmpiricalRiskCost):
 
         if self._load_dataset:
             # Loads the dataset into memory in case it is lazily loaded
-            self.dataset = IndexDataset([(x, y) for x, y in dataset])
+            self.dataset = _IndexDataset([(x, y) for x, y in dataset])
         else:
-            self.dataset = IndexDataset(dataset)
+            self.dataset = _IndexDataset(dataset)
 
         self._pytorch_device: str = iop.device_to_framework_device(device, framework=self.framework)
         self.model = self.model.to(self._pytorch_device)
@@ -461,7 +462,7 @@ class SimpleMLP(torch.nn.Module):
     ):
         super().__init__()
 
-        layers = []
+        layers: list[torch.nn.Module] = []
         prev_size = input_size
 
         # Hidden layers
