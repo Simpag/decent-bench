@@ -67,7 +67,12 @@ class Algorithm(ABC):
                 i.aux_vars.clear()
 
     @final
-    def run(self, network: P2PNetwork, progress_callback: Callable[[int], None] | None = None) -> None:
+    def run(
+        self,
+        network: P2PNetwork,
+        progress_callback: Callable[[int], None] | None = None,
+        start_iteration: int = 0,
+    ) -> None:
         """
         Run the algorithm.
 
@@ -82,10 +87,21 @@ class Algorithm(ABC):
         Args:
             network: provides agents, neighbors etc.
             progress_callback: optional callback to report progress after each iteration.
+            start_iteration: iteration to start from (used when resuming from checkpoint). If greater than 0,
+                :meth:`initialize` will be skipped.
+
+        Raises:
+            ValueError: if start_iteration is invalid (negative or greater than total iterations).
 
         """
-        self.initialize(network)
-        for k in range(self.iterations):
+        if start_iteration < 0 or start_iteration > self.iterations:
+            raise ValueError(
+                f"Invalid start_iteration {start_iteration} for algorithm with {self.iterations} iterations"
+            )
+
+        if start_iteration == 0:
+            self.initialize(network)
+        for k in range(start_iteration, self.iterations):
             self.step(network, k)
             if progress_callback is not None:
                 progress_callback(k)

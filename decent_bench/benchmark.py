@@ -5,6 +5,7 @@ from copy import deepcopy
 from logging.handlers import QueueListener
 from multiprocessing import Manager, get_context
 from multiprocessing.context import BaseContext
+from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING, Literal
 
@@ -17,6 +18,7 @@ from decent_bench.metrics import ComputationalCost, Metric, create_plots, create
 from decent_bench.metrics import metric_collection as mc
 from decent_bench.networks import P2PNetwork, create_distributed_network
 from decent_bench.utils import logger
+from decent_bench.utils.checkpoint import CheckpointManager
 from decent_bench.utils.logger import LOGGER
 from decent_bench.utils.progress_bar import ProgressBarController
 
@@ -45,6 +47,10 @@ def benchmark(
     show_speed: bool = False,
     show_trial: bool = False,
     compare_iterations_and_computational_cost: bool = False,
+    checkpoint_dir: str | None = None,
+    checkpoint_step: int | None = None,
+    keep_n_checkpoints: int = 3,
+    resume_benchmarking: bool = False,
 ) -> None:
     """
     Benchmark decentralized algorithms.
@@ -87,6 +93,22 @@ def benchmark(
         show_trial: whether to show which trials are currently running in the progress bar.
         compare_iterations_and_computational_cost: whether to plot both metric vs computational cost and
             metric vs iterations. Only used if ``computational_cost`` is provided.
+        checkpoint_dir: directory path to save checkpoints during execution. If provided, progress will be saved
+            at regular intervals allowing resumption if interrupted. When starting a new benchmark
+            (``resume_benchmarking=False``), the directory must be empty or non-existent. When resuming
+            (``resume_benchmarking=True``), the directory must exist and contain valid checkpoint data.
+        checkpoint_step: number of iterations between checkpoints within each trial. Only used if ``checkpoint_dir``
+            is provided. If ``None``, only save checkpoint at the end of each trial. For long-running algorithms,
+            set this to checkpoint during trial execution (e.g., every 1000 iterations).
+        keep_n_checkpoints: maximum number of iteration checkpoints to keep per trial. Older checkpoints are
+            automatically deleted to save disk space. Only applies to within-trial checkpoints, not final results.
+        resume_benchmarking: if ``True``, resume benchmark execution from existing checkpoint directory. The
+            directory must exist and contain valid checkpoint data. Completed trials will be skipped and incomplete
+            trials will resume from their last checkpoint. If ``False``, start a new benchmark run.
+
+    Raises:
+        ValueError: if checkpoint_dir is provided but not empty (when resume_benchmarking=False), or if
+            checkpoint_dir doesn't exist or is invalid (when resume_benchmarking=True)
 
     Important:
         Multiprocessing with certain frameworks (e.g., PyTorch) can lead to unexpected behavior due to how they handle
@@ -113,6 +135,49 @@ def benchmark(
         Computational cost plots will be shown on the left and iteration plots on the right.
 
     """
+    # Validate and initialize/load checkpoint directory if provided
+    checkpoint_manager = None
+    if checkpoint_dir is not None:
+        checkpoint_manager = CheckpointManager(checkpoint_dir)
+
+        if resume_benchmarking:
+            # Resuming from existing checkpoint
+            if not Path(checkpoint_dir).exists():
+                raise ValueError(f"Checkpoint directory '{checkpoint_dir}' does not exist for resume")
+            if checkpoint_manager.is_empty():
+                raise ValueError(f"Checkpoint directory '{checkpoint_dir}' is empty or invalid for resume")
+
+            # Load metadata to get original settings
+            try:
+                metadata = checkpoint_manager.load_metadata()
+                original_n_trials = metadata["benchmark_metadata"]["n_trials"]
+                original_checkpoint_step = metadata["benchmark_metadata"].get("checkpoint_step")
+
+                # Validate that n_trials matches
+                if n_trials != original_n_trials:
+                    LOGGER.warning(
+                        f"n_trials mismatch: original={original_n_trials}, current={n_trials}. "
+                        f"Using original value: {original_n_trials}"
+                    )
+                    n_trials = original_n_trials
+
+                # Update checkpoint_step if it was in metadata
+                if checkpoint_step is None and original_checkpoint_step is not None:
+                    checkpoint_step = original_checkpoint_step
+
+            except (FileNotFoundError, KeyError) as e:
+                raise ValueError(f"Invalid checkpoint directory: missing or corrupted metadata - {e}") from e
+
+            LOGGER.info(f"Resuming benchmark from checkpoint: {checkpoint_dir}")
+        else:
+            # Starting new benchmark
+            if not checkpoint_manager.is_empty():
+                error_msg = (
+                    f"Checkpoint directory '{checkpoint_dir}' is not empty. "
+                    "Please use an empty directory for a new benchmark run, or set resume_benchmarking=True to resume."
+                )
+                raise ValueError(error_msg)
+
     # Detect if PyTorch costs are being used to determine multiprocessing context
     if max_processes != 1:
         use_spawn = _should_use_spawn_context(benchmark_problem)
@@ -126,12 +191,42 @@ def benchmark(
     LOGGER.info("Starting benchmark execution ")
     if use_spawn:
         LOGGER.debug("Using spawn multiprocessing context for PyTorch/JAX compatibility")
-    with Status("Generating initial network state"):
-        nw_init_state = create_distributed_network(benchmark_problem)
+
+    # Generate or load initial network state
+    if checkpoint_manager is not None and resume_benchmarking:
+        try:
+            nw_init_state = checkpoint_manager.load_initial_network()
+            LOGGER.debug("Loaded initial network state from checkpoint")
+        except FileNotFoundError as e:
+            raise ValueError(f"Invalid checkpoint directory: missing initial network state - {e}") from e
+    else:
+        with Status("Generating initial network state"):
+            nw_init_state = create_distributed_network(benchmark_problem)
+
     LOGGER.debug(f"Nr of agents: {len(nw_init_state.agents())}")
+
+    # Initialize checkpoint if enabled and not resuming
+    if checkpoint_manager is not None and not resume_benchmarking:
+        benchmark_metadata = {
+            "n_trials": n_trials,
+            "checkpoint_step": checkpoint_step,
+        }
+        checkpoint_manager.initialize(algorithms, benchmark_metadata)
+        checkpoint_manager.save_initial_network(nw_init_state)
+        LOGGER.info(f"Checkpoint system initialized at: {checkpoint_dir}")
+
     prog_ctrl = ProgressBarController(manager, algorithms, n_trials, progress_step, show_speed, show_trial)
     resulting_nw_states = _run_trials(
-        algorithms, n_trials, nw_init_state, prog_ctrl, log_listener, max_processes, mp_context
+        algorithms,
+        n_trials,
+        nw_init_state,
+        prog_ctrl,
+        log_listener,
+        max_processes,
+        mp_context,
+        checkpoint_manager,
+        checkpoint_step,
+        keep_n_checkpoints,
     )
     LOGGER.info("All trials complete")
     resulting_agent_states: dict[Algorithm, list[list[AgentMetricsView]]] = {}
@@ -168,29 +263,72 @@ def _run_trials(  # noqa: PLR0917
     log_listener: QueueListener,
     max_processes: int | None,
     mp_context: BaseContext | None = None,
+    checkpoint_manager: CheckpointManager | None = None,
+    checkpoint_step: int | None = None,
+    keep_n_checkpoints: int = 3,
 ) -> dict[Algorithm, list[P2PNetwork]]:
+    # TODO: Git diff check this!
+
     progress_bar_handle = progress_bar_ctrl.get_handle()
-    if max_processes == 1:
-        result = {
-            alg: [_run_trial(alg, nw_init_state, progress_bar_handle, trial) for trial in range(n_trials)]
-            for alg in algorithms
-        }
-    else:
-        with ProcessPoolExecutor(
-            initializer=logger.start_queue_logger,
-            initargs=(log_listener.queue,),
-            max_workers=max_processes,
-            mp_context=mp_context,
-        ) as executor:
-            LOGGER.debug(f"Concurrent processes: {executor._max_workers}")  # type: ignore[attr-defined] # noqa: SLF001
-            all_futures = {
-                alg: [
-                    executor.submit(_run_trial, alg, nw_init_state, progress_bar_handle, trial)
-                    for trial in range(n_trials)
+
+    result: dict[Algorithm, list[P2PNetwork]] = {}
+
+    for alg_idx, alg in enumerate(algorithms):
+        trial_results: list[P2PNetwork] = []
+
+        # Separate completed and incomplete trials
+        if checkpoint_manager is not None:
+            completed_trials = checkpoint_manager.get_completed_trials(alg_idx, n_trials)
+            incomplete_trials = [t for t in range(n_trials) if t not in completed_trials]
+
+            # Load completed trials
+            for trial in completed_trials:
+                network = checkpoint_manager.load_trial_result(alg_idx, trial)
+                trial_results.append(network)
+                LOGGER.debug(f"Loaded completed trial: {alg.name} trial {trial}")
+        else:
+            incomplete_trials = list(range(n_trials))
+
+        # Run incomplete trials
+        if max_processes == 1:
+            for trial in incomplete_trials:
+                network = _run_trial(
+                    alg,
+                    nw_init_state,
+                    progress_bar_handle,
+                    trial,
+                    alg_idx,
+                    checkpoint_manager,
+                    checkpoint_step,
+                    keep_n_checkpoints,
+                )
+                trial_results.append(network)
+        else:
+            with ProcessPoolExecutor(
+                initializer=logger.start_queue_logger,
+                initargs=(log_listener.queue,),
+                max_workers=max_processes,
+                mp_context=mp_context,
+            ) as executor:
+                LOGGER.debug(f"Concurrent processes: {executor._max_workers}")  # type: ignore[attr-defined] # noqa: SLF001
+                futures = [
+                    executor.submit(
+                        _run_trial,
+                        alg,
+                        nw_init_state,
+                        progress_bar_handle,
+                        trial,
+                        alg_idx,
+                        checkpoint_manager,
+                        checkpoint_step,
+                        keep_n_checkpoints,
+                    )
+                    for trial in incomplete_trials
                 ]
-                for alg in algorithms
-            }
-            result = {alg: [f.result() for f in as_completed(futures)] for alg, futures in all_futures.items()}
+                for f in as_completed(futures):
+                    trial_results.append(f.result())
+
+        result[alg] = trial_results
 
     progress_bar_ctrl.stop()
     return result
@@ -201,16 +339,51 @@ def _run_trial(
     nw_init_state: P2PNetwork,
     progress_bar_handle: "ProgressBarHandle",
     trial: int,
+    alg_idx: int,
+    checkpoint_manager: CheckpointManager | None = None,
+    checkpoint_step: int | None = None,
+    keep_n_checkpoints: int = 3,
 ) -> P2PNetwork:
     progress_bar_handle.start_progress_bar(algorithm, trial)
-    network = deepcopy(nw_init_state)
-    alg = deepcopy(algorithm)
+
+    # Check if we can resume from a checkpoint
+    if checkpoint_manager is not None:
+        checkpoint_data = checkpoint_manager.load_checkpoint(alg_idx, trial)
+        if checkpoint_data is not None:
+            alg, network, last_iteration = checkpoint_data
+            start_iteration = last_iteration + 1
+            LOGGER.info(
+                f"Resuming {algorithm.name} trial {trial} from iteration {start_iteration}/{algorithm.iterations}"
+            )
+        else:
+            # Start fresh
+            network = deepcopy(nw_init_state)
+            alg = deepcopy(algorithm)
+            start_iteration = 0
+    else:
+        # No checkpointing, start fresh
+        network = deepcopy(nw_init_state)
+        alg = deepcopy(algorithm)
+        start_iteration = 0
+
+    # Define checkpoint callback
+    def checkpoint_callback(iteration: int) -> None:
+        progress_bar_handle.advance_progress_bar(algorithm, iteration)
+        if checkpoint_manager is not None and checkpoint_step is not None and iteration % checkpoint_step == 0:
+            checkpoint_manager.save_checkpoint(alg_idx, trial, iteration, alg, network)
+            checkpoint_manager.cleanup_old_checkpoints(alg_idx, trial, keep_n_checkpoints)
 
     with warnings.catch_warnings(action="error"):
         try:
-            alg.run(network, lambda iteration: progress_bar_handle.advance_progress_bar(algorithm, iteration))
+            # Run algorithm, starting from the appropriate iteration
+            alg.run(network, checkpoint_callback, start_iteration)
         except Exception as e:
             LOGGER.exception(f"An error or warning occurred when running {alg.name}: {type(e).__name__}: {e}")
+
+    # Save final result if checkpointing is enabled
+    if checkpoint_manager is not None:
+        checkpoint_manager.mark_trial_complete(alg_idx, trial, network)
+
     return network
 
 
