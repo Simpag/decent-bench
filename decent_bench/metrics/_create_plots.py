@@ -52,7 +52,7 @@ def create_plots(
     individual_plots: bool = False,
     plot_grid: bool = True,
     plot_path: Path | None = None,
-) -> None:
+) -> dict[Algorithm, dict[Metric, tuple[Sequence[X], Sequence[Y], Sequence[Y], Sequence[Y]]]] | None:
     """
     Plot the execution results with one subplot per metric.
 
@@ -75,6 +75,11 @@ def create_plots(
         plot_path: optional file path to save the generated plot as an image file (e.g., "plots.png"). If ``None``,
             the plot will only be displayed
 
+    Returns:
+        The results of the metrics in a nested dictionary format, or ``None`` if no metrics were provided or
+        if no valid data was available for plotting. The format is:
+            ``{Algorithm: {Metric: (x, y_mean, y_min, y_max)}}``
+
     Note:
         Computational cost can be interpreted as the cost of running the algorithm on a specific hardware setup.
         Therefore the computational cost could be seen as the number of operations performed (similar to FLOPS) but
@@ -84,7 +89,12 @@ def create_plots(
 
     """
     if not metrics:
-        return
+        return None
+
+    results: dict[
+        Algorithm,
+        dict[Metric, tuple[Sequence[X], Sequence[Y], Sequence[Y], Sequence[Y]]],
+    ] = {a: {} for a in resulting_agent_states}
 
     # Normalize metrics into list of groups (each group will be one figure)
     metric_groups = _organize_metrics_into_groups(metrics, individual_plots)
@@ -142,7 +152,9 @@ def create_plots(
                         LOGGER.warning(msg)
                         progress.advance(plot_task, 2 if two_columns else 1)
                         continue
-                    _plot(
+
+                    # Plot and get results
+                    plot_results = _plot(
                         metric_subplots,
                         data_per_trial,
                         computational_cost,
@@ -153,13 +165,17 @@ def create_plots(
                         metric_index_in_group,
                         alg_idx,
                     )
+
+                    # Store results
+                    results[alg][metric] = plot_results
+
                     did_plot = True
                     progress.advance(plot_task, 2 if two_columns else 1)
         progress.update(plot_task, status="Finalizing plots")
 
     if not did_plot:
         LOGGER.warning("No plots were generated due to invalid data.")
-        return
+        return None
 
     # Filter out empty figures (ones with no data plotted in any subplot)
     figures_to_show = [
@@ -170,7 +186,7 @@ def create_plots(
 
     if not figures_to_show:
         LOGGER.warning("All figures are empty, nothing to display.")
-        return
+        return None
 
     # Add legends and save all non-empty figures
     for fig_idx, (fig, metric_subplots) in enumerate(figures_to_show):
@@ -189,6 +205,7 @@ def create_plots(
 
     # Show all non-empty figures at once
     plt.show()
+    return results
 
 
 def _organize_metrics_into_groups(
@@ -335,7 +352,7 @@ def _plot(  # noqa: PLR0917
     alg: Algorithm,
     metric_index: int,
     iteration: int,
-) -> None:
+) -> tuple[Sequence[float], Sequence[float], Sequence[float], Sequence[float]]:
     use_cost = computational_cost is not None
     subplot_idx = metric_index * (2 if use_cost and compare_iterations_and_computational_cost else 1)
 
@@ -351,6 +368,8 @@ def _plot(  # noqa: PLR0917
             _plot_subplot(metric_subplots[iter_idx], x, y_mean, y_min, y_max, alg.name, iteration)
         x = x_computational
     _plot_subplot(metric_subplots[subplot_idx], x, y_mean, y_min, y_max, alg.name, iteration)
+
+    return (x, y_mean, y_min, y_max)
 
 
 def _plot_subplot(  # noqa: PLR0917

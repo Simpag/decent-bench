@@ -14,6 +14,8 @@ from decent_bench.distributed_algorithms import Algorithm
 from decent_bench.metrics._metric import Metric
 from decent_bench.utils.logger import LOGGER
 
+STATISTICS_ABBR = {"average": "avg", "median": "mdn"}
+
 
 def create_tables(
     resulting_agent_states: dict[Algorithm, list[list[AgentMetricsView]]],
@@ -23,7 +25,7 @@ def create_tables(
     table_fmt: Literal["grid", "latex"],
     *,
     table_path: Path | None = None,
-) -> None:
+) -> dict[Algorithm, dict[Metric, dict[str, tuple[float, float]]]] | None:
     """
     Print table with confidence intervals, one row per metric and statistic, and one column per algorithm.
 
@@ -39,13 +41,19 @@ def create_tables(
         table_fmt: table format, grid is suitable for the terminal while latex can be copy-pasted into a latex document
         table_path: optional path to save the table as a text file, if not provided the table is not saved to a file
 
+    Returns:
+        A nested dictionary containing the mean and margin of error for each metric and statistic, structured as
+        {algorithm: {metric: {statistic_name: (mean, margin_of_error)}}}
+
     """
     if not metrics:
-        return
+        return None
+    results: dict[Algorithm, dict[Metric, dict[str, tuple[float, float]]]] = {
+        a: {m: {} for m in metrics} for a in resulting_agent_states
+    }
     algs = list(resulting_agent_states)
     headers = ["Metric (statistic)"] + [alg.name for alg in algs]
     rows: list[list[str]] = []
-    statistics_abbr = {"average": "avg", "median": "mdn"}
     with warnings.catch_warnings(action="ignore"), utils.MetricProgressBar() as progress:
         table_task = progress.add_task(
             "Generating table",
@@ -56,7 +64,7 @@ def create_tables(
             progress.update(table_task, status=f"Task: {metric.table_description}")
             data_per_trial = [_table_data_per_trial(resulting_agent_states[a], problem, metric) for a in algs]
             for statistic in metric.statistics:
-                row = [f"{metric.table_description} ({statistics_abbr.get(statistic.__name__) or statistic.__name__})"]
+                row = [f"{metric.table_description} ({STATISTICS_ABBR.get(statistic.__name__) or statistic.__name__})"]
                 for i in range(len(algs)):
                     agg_data_per_trial = [statistic(trial) for trial in data_per_trial[i]]
                     mean, margin_of_error = _calculate_mean_and_margin_of_error(agg_data_per_trial, confidence_level)
@@ -65,6 +73,10 @@ def create_tables(
                         margin_of_error,
                         metric.fmt,
                         metric.can_diverge,
+                    )
+                    results[algs[i]][metric][STATISTICS_ABBR.get(statistic.__name__) or statistic.__name__] = (
+                        mean,
+                        margin_of_error,
                     )
                     row.append(formatted_confidence_interval)
                 rows.append(row)
@@ -82,6 +94,8 @@ def create_tables(
         grid_path.write_text(grid_table, encoding="utf-8")
         LOGGER.info(f"Saved LaTeX table to {latex_path}")
         LOGGER.info(f"Saved grid table to {grid_path}")
+
+    return results
 
 
 def _table_data_per_trial(

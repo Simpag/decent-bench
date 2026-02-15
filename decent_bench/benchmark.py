@@ -15,6 +15,7 @@ from rich.status import Status
 
 from decent_bench.agents import AgentMetricsView
 from decent_bench.benchmark_problem import BenchmarkProblem
+from decent_bench.benchmark_result import BenchmarkResult
 from decent_bench.distributed_algorithms import Algorithm
 from decent_bench.metrics import ComputationalCost, Metric, create_plots, create_tables
 from decent_bench.metrics import metric_collection as mc
@@ -50,7 +51,7 @@ def resume_benchmark(
     compare_iterations_and_computational_cost: bool = False,
     checkpoint_step: int | None = None,
     keep_n_checkpoints: int = 3,
-) -> None:
+) -> BenchmarkResult:
     """
     Resume a benchmark from an existing checkpoint directory.
 
@@ -102,6 +103,9 @@ def resume_benchmark(
             set this to checkpoint during trial execution (e.g., every 1000 iterations).
         keep_n_checkpoints: maximum number of iteration checkpoints to keep per trial. Older checkpoints are
             automatically deleted to save disk space. Only applies to within-trial checkpoints, not final results.
+
+    Returns:
+        BenchmarkResult: the result of the benchmark execution, containing the results and metadata
 
     Important:
         Multiprocessing with certain frameworks (e.g., PyTorch) can lead to unexpected behavior due to how they handle
@@ -190,7 +194,7 @@ def resume_benchmark(
             f"Increased iterations for all algorithms by {increase_iterations}, total increase is {total_increased}"
         )
 
-    _benchmark(
+    return _benchmark(
         algorithms=algorithms,
         benchmark_problem=problem,
         nw_init_state=nw_init_state,
@@ -238,7 +242,7 @@ def benchmark(
     checkpoint_step: int | None = None,
     keep_n_checkpoints: int = 3,
     benchmark_metadata: dict[str, Any] | None = None,
-) -> None:
+) -> BenchmarkResult:
     """
     Benchmark decentralized algorithms.
 
@@ -287,6 +291,9 @@ def benchmark(
         benchmark_metadata: optional dictionary of additional metadata to save in the checkpoint directory,
             such as hyperparameters or system information. This can be useful for keeping track of the benchmark
             configuration and context when analyzing results later.
+
+    Returns:
+        BenchmarkResult: the result of the benchmark execution, containing the results and metadata
 
     Important:
         Multiprocessing with certain frameworks (e.g., PyTorch) can lead to unexpected behavior due to how they handle
@@ -337,7 +344,7 @@ def benchmark(
             "Progress cannot be resumed if interrupted."
         )
 
-    _benchmark(
+    return _benchmark(
         algorithms=algorithms,
         benchmark_problem=benchmark_problem,
         nw_init_state=nw_init_state,
@@ -385,7 +392,7 @@ def _benchmark(
     show_trial: bool = False,
     compare_iterations_and_computational_cost: bool = False,
     checkpoint_manager: CheckpointManager | None = None,
-) -> None:
+) -> BenchmarkResult:
     """
     Benchmark decentralized algorithms.
 
@@ -430,6 +437,9 @@ def _benchmark(
             If ``None``, no checkpoints will be saved and the benchmark will run from start to finish
             without resumption capability.
 
+    Returns:
+        BenchmarkResult: the result of the benchmark execution, containing the results and metadata
+
     Important:
         Multiprocessing with certain frameworks (e.g., PyTorch) can lead to unexpected behavior due to how they handle
         multiprocessing. It is recommended to not use multiprocessing when benchmarking algorithms that utilize such
@@ -472,7 +482,7 @@ def _benchmark(
     resulting_agent_states: dict[Algorithm, list[list[AgentMetricsView]]] = {}
     for alg, networks in resulting_nw_states.items():
         resulting_agent_states[alg] = [[AgentMetricsView.from_agent(a) for a in nw.agents()] for nw in networks]
-    create_tables(
+    table_results = create_tables(
         resulting_agent_states,
         benchmark_problem,
         table_metrics,
@@ -480,7 +490,7 @@ def _benchmark(
         table_fmt,
         table_path=checkpoint_manager.get_results_path("table.txt") if checkpoint_manager else None,
     )
-    create_plots(
+    plot_results = create_plots(
         resulting_agent_states,
         benchmark_problem,
         plot_metrics,
@@ -493,6 +503,13 @@ def _benchmark(
     )
     LOGGER.info("Benchmark execution complete, thanks for using decent-bench")
     log_listener.stop()
+
+    return BenchmarkResult(
+        benchmark_problem=benchmark_problem,
+        states=resulting_nw_states,
+        table_results=table_results,
+        plot_results=plot_results,
+    )
 
 
 def _init_logging_and_multiprocessing(
