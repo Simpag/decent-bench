@@ -24,7 +24,7 @@ class Agent:
         self._state_snapshot_period = state_snapshot_period
         self._current_x: Array | None = None
         self._x_history: dict[int, Array] = {}
-        self._auxiliary_variables: dict[str, Array] = {}
+        self._auxiliary_variables: dict[str, Any] = {}
         self._received_messages: dict[Agent, Array] = {}
         self._n_x_updates = 0
         self._n_sent_messages = 0
@@ -83,7 +83,7 @@ class Agent:
         return MappingProxyType(self._received_messages)
 
     @property
-    def aux_vars(self) -> dict[str, Array]:
+    def aux_vars(self) -> dict[str, Any]:
         """Auxiliary optimization variables used by algorithms that require more variables than x."""
         return self._auxiliary_variables
 
@@ -91,7 +91,7 @@ class Agent:
         self,
         *,
         x: Array | None = None,
-        aux_vars: dict[str, Array] | None = None,
+        aux_vars: dict[str, Any] | None = None,
         received_msgs: dict[Agent, Array] | None = None,
     ) -> None:
         """

@@ -8,6 +8,7 @@ from decent_bench import (
     distributed_algorithms,
     metrics,
     networks,
+    nim_algs,
     schemes,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "distributed_algorithms",
     "metrics",
     "networks",
+    "nim_algs",
     "schemes",
 ]

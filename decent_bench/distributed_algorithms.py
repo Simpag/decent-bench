@@ -54,13 +54,28 @@ class Algorithm(ABC):
 
         """
 
-    def finalize(self, network: P2PNetwork) -> None:
+    def finalize(self, network: P2PNetwork) -> None:  # noqa: ARG002
         """
         Finalize the algorithm.
 
         Note:
             Override method as needed.
             Does not need to be implemented if no finalization is required.
+            By default it does nothing.
+
+        Args:
+            network: provides agents, neighbors etc.
+
+        """
+        return
+
+    def cleanup(self, network: P2PNetwork) -> None:
+        """
+        Clean up the algorithm.
+
+        Note:
+            Override method as needed.
+            Does not need to be implemented if no cleanup is required.
             By default it is used to clean up auxiliary variables to free memory.
 
         Args:
@@ -77,7 +92,6 @@ class Algorithm(ABC):
         network: P2PNetwork,
         start_iteration: int = 0,
         progress_callback: Callable[[int], None] | None = None,
-        skip_finalize: bool = False,
     ) -> None:
         """
         Run the algorithm.
@@ -90,9 +104,6 @@ class Algorithm(ABC):
             start_iteration: iteration number to start from, used when resuming from a checkpoint. If greater than 0,
                 :meth:`initialize` will be skipped.
             progress_callback: optional callback to report progress after each iteration.
-            skip_finalize: if True, skip calling :meth:`finalize` after running the iterations. This is needed
-                so that full agent states and training variables can be saved in checkpoints without being cleared
-                by :meth:`finalize`.
 
         Raises:
             ValueError: if start_iteration is not in [0, iterations]
@@ -100,6 +111,9 @@ class Algorithm(ABC):
         Warning:
             Do not override this method. Instead, override :meth:`initialize`, :meth:`step` and :meth:`finalize`
             as needed.
+
+        Note:
+            If you .... :meth:`cleanup`
 
         """
         if start_iteration < 0 or start_iteration > self.iterations:
@@ -113,9 +127,7 @@ class Algorithm(ABC):
             self.step(network, k)
             if progress_callback is not None:
                 progress_callback(k)
-
-        if not skip_finalize:
-            self.finalize(network)
+        self.finalize(network)
 
 
 @dataclass(eq=False)

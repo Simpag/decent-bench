@@ -3,6 +3,11 @@ decent\_bench.distributed\_algorithms
 
 .. currentmodule:: decent_bench.distributed_algorithms
 
+.. toctree::
+   :maxdepth: 2
+
+   decent_bench.nim_algs
+
 .. autoclass:: Algorithm
    :members:
    :show-inheritance:
@@ -18,3 +23,6 @@ decent\_bench.distributed\_algorithms
       step,
       finalize,
       run,
+
+
+.. footbibliography::
