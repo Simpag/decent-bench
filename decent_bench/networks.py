@@ -35,6 +35,11 @@ class Network(ABC):  # noqa: B024
         self._message_compression = message_compression
         self._message_drop = message_drop
 
+        # Check that all agents have unique ids
+        agent_ids = [agent.id for agent in self.graph]
+        if len(agent_ids) != len(set(agent_ids)):
+            raise ValueError("All agents in the network must have unique ids")
+
     @property
     def graph(self) -> AgentGraph:
         """Underlying NetworkX graph; mutating it will change the network."""
