@@ -26,7 +26,7 @@ def visualize_nim_dataset(
     *,
     figsize: tuple[int, int] = (12, 10),
     animate: bool = False,
-    path_index: int | None = None,
+    path_index: int | list[int] | None = None,
     fps: int = 10,
     save_path: str | None = None,
 ) -> FuncAnimation | Figure:
@@ -36,18 +36,22 @@ def visualize_nim_dataset(
     If `nim_data.paths` is not set, a static visualization of the spatial partitions
     and sampled points is produced. If `nim_data.paths` is set, the function visualizes the paths and simulated
     lidar hits. In this case, if `animate` is False, a static plot with all paths and hits is shown. If
-    `animate` is True, an animation of the scanner moving along the specified path and shooting beams is created.
+    `animate` is True, an animation of the scanner moving along the specified path(s) and shooting beams is created.
 
     Args:
         nim_data: A NIMDatasetHandler instance to visualize.
         figsize: The size of the figure for static visualizations.
         animate: Whether to create an animation (only applicable if nim_data.paths is set).
-        path_index: The index of the path to visualize (required if animate=True).
+        path_index: The index (or list of indices) of the path(s) to visualize. If None, all paths are shown.
         fps: Frames per second for the animation (if animate=True).
         save_path: If provided, the visualization (static or animated) will be saved to this path.
 
     Returns:
         A matplotlib Figure for static visualizations, or a FuncAnimation for animated visualizations.
+
+    Note:
+        Remember to call matplotlib.pyplot.show() to display the visualization if not
+        running in an interactive environment.
 
     """
     if nim_data.paths is None:
@@ -183,7 +187,7 @@ def _visualize_random_sampling(
 def _visualize_lidar_sampling(  # noqa: PLR0914, PLR0915
     nim_data: NIMDatasetHandler,
     *,
-    path_index: int | None = None,
+    path_index: int | list[int] | None = None,
     animate: bool = False,
     fps: int = 10,
     figsize: tuple[int, int] = (10, 8),
@@ -195,15 +199,15 @@ def _visualize_lidar_sampling(  # noqa: PLR0914, PLR0915
     In static mode (animate=False) all paths are drawn on the image together with
     the lidar hit points stored in each partition.
 
-    In animated mode (animate=True, path_index required) the scanner moves along
-    the chosen path frame-by-frame, shooting beams and accumulating hits in
-    real-time.  The animation is returned and, if `save_path` is given, saved to
-    disk.
+    In animated mode (animate=True) the scanner(s) move along the chosen path(s)
+    frame-by-frame, shooting beams and accumulating hits in real-time.  All agents
+    are shown simultaneously.  The animation is returned and, if `save_path` is
+    given, saved to disk.
 
     Args:
         nim_data: A NIMDatasetHandler instance that used path-based lidar sampling.
-        path_index: Index of the path to focus on.  If None and animate=False,
-            all paths are shown.  Required when animate=True.
+        path_index: Index or list of indices of the path(s) to focus on.  If None,
+            all paths are shown / animated.
         animate: Whether to produce an animated scan instead of a static plot.
         fps: Frames per second used when saving the animation.
         figsize: Figure size.
@@ -254,80 +258,113 @@ def _visualize_lidar_sampling(  # noqa: PLR0914, PLR0915
 
     # ================================================================== ANIMATE
     if animate:
+        # Normalise path_index to a list of indices
         if path_index is None:
-            raise ValueError("path_index must be provided when animate=True")
-
-        raw_path = paths_list[path_index]
-        positions = (
-            densify_path(raw_path, nim_data.scan_spacing)
-            if nim_data.scan_spacing
-            else raw_path
-        )
-        poses = compute_headings(positions)
-
-        # Pre-compute full lidar scans for every pose
-        all_scans: list[tuple[float, float, list[RayCastHit]]] = []
-        for ox, oy, heading in poses:
-            beams = simulate_lidar_scan(
-                occ,
-                (ox, oy),
-                num_beams=nim_data.num_beams,
-                fov=nim_data.fov,
-                max_range=max_range,
-                heading=heading,
-            )
-            all_scans.append((ox, oy, beams))
+            indices = list(range(n_paths))
+        elif isinstance(path_index, int):
+            indices = [path_index]
+        else:
+            indices = path_index
 
         fig, ax = plt.subplots(figsize=figsize)
         ax.imshow(img_array, cmap="gray", origin="upper")
-        ax.set_title(f"LiDAR Scan Animation – Path {path_index}\n{nim_data.image_file}")
+        label = f"Paths {indices}" if len(indices) > 1 else f"Path {indices[0]}"
+        ax.set_title(f"LiDAR Scan Animation – {label}\n{nim_data.image_file}")
         ax.axis("off")
 
-        color = colors[path_index % len(colors)]
+        # Per-agent data and artists
+        agent_scans: list[list[tuple[float, float, list[RayCastHit]]]] = []
+        agent_dots: list[Line2D] = []
+        agent_beam_segs: list[list[Line2D]] = []
+        agent_hit_scatters: list[PathCollection] = []
+        agent_hits_x: list[list[float]] = [[] for _ in indices]
+        agent_hits_y: list[list[float]] = [[] for _ in indices]
 
-        # Static path overlay
-        px = [p[0] for p in raw_path]
-        py = [p[1] for p in raw_path]
-        ax.plot(px, py, color=color, linewidth=1.5, alpha=0.4, zorder=2)
+        for pi in indices:
+            color = colors[pi % len(colors)]
+            raw_path = paths_list[pi]
+            positions = (
+                densify_path(raw_path, nim_data.scan_spacing)
+                if nim_data.scan_spacing
+                else raw_path
+            )
+            poses = compute_headings(positions)
 
-        # Mutable artists
-        (scanner_dot,) = ax.plot([], [], "o", color="red", markersize=8, zorder=6)
-        beam_segs = [
-            ax.plot([], [], "-", color="yellow", linewidth=0.8, alpha=0.6, zorder=4)[0]
-            for _ in range(nim_data.num_beams)
+            scans: list[tuple[float, float, list[RayCastHit]]] = []
+            for ox, oy, heading in poses:
+                beams = simulate_lidar_scan(
+                    occ,
+                    (ox, oy),
+                    num_beams=nim_data.num_beams,
+                    fov=nim_data.fov,
+                    max_range=max_range,
+                    heading=heading,
+                )
+                scans.append((ox, oy, beams))
+            agent_scans.append(scans)
+
+            # Static path overlay
+            px = [p[0] for p in raw_path]
+            py = [p[1] for p in raw_path]
+            ax.plot(px, py, color=color, linewidth=1.5, alpha=0.4, zorder=2)
+
+            # Per-agent mutable artists
+            (dot,) = ax.plot([], [], "o", color=color, markersize=8, zorder=6)
+            segs = [
+                ax.plot([], [], "-", color=color, linewidth=0.8, alpha=0.6, zorder=4)[0]
+                for _ in range(nim_data.num_beams)
+            ]
+            scatter = ax.scatter([], [], color=color, s=6, alpha=0.7, zorder=5)
+            agent_dots.append(dot)
+            agent_beam_segs.append(segs)
+            agent_hit_scatters.append(scatter)
+
+        all_artists: list[Line2D | PathCollection] = [
+            *agent_dots,
+            *agent_hit_scatters,
+            *(seg for segs in agent_beam_segs for seg in segs),
         ]
-        hit_scatter = ax.scatter([], [], c="cyan", s=6, alpha=0.7, zorder=5)
 
-        acc_hits_x: list[float] = []
-        acc_hits_y: list[float] = []
+        max_frames = max(len(s) for s in agent_scans)
 
         def _init() -> list[Line2D | PathCollection]:
-            scanner_dot.set_data([], [])
-            for seg in beam_segs:
-                seg.set_data([], [])
-            hit_scatter.set_offsets(np.empty((0, 2)))
-            return [scanner_dot, hit_scatter, *beam_segs]
+            for dot in agent_dots:
+                dot.set_data([], [])
+            for segs in agent_beam_segs:
+                for seg in segs:
+                    seg.set_data([], [])
+            for scatter in agent_hit_scatters:
+                scatter.set_offsets(np.empty((0, 2)))
+            return all_artists
 
         def _update(frame: int) -> list[Line2D | PathCollection]:
-            ox, oy, beams = all_scans[frame]
-            scanner_dot.set_data([ox], [oy])
+            for i, (dot, segs, scatter) in enumerate(
+                zip(agent_dots, agent_beam_segs, agent_hit_scatters, strict=True)
+            ):
+                agent_scans_i = agent_scans[i]
+                if frame >= len(agent_scans_i):
+                    continue
+                ox, oy, beams = agent_scans_i[frame]
+                dot.set_data([ox], [oy])
 
-            acc_hits_x.clear()
-            acc_hits_y.clear()
-            for seg, hit in zip(beam_segs, beams, strict=True):
-                seg.set_data([ox, hit.hit_point[0]], [oy, hit.hit_point[1]])
-                if hit.hit:
-                    acc_hits_x.append(float(hit.hit_point[0]))
-                    acc_hits_y.append(float(hit.hit_point[1]))
+                agent_hits_x[i].clear()
+                agent_hits_y[i].clear()
+                for seg, hit in zip(segs, beams, strict=True):
+                    seg.set_data([ox, hit.hit_point[0]], [oy, hit.hit_point[1]])
+                    if hit.hit:
+                        agent_hits_x[i].append(float(hit.hit_point[0]))
+                        agent_hits_y[i].append(float(hit.hit_point[1]))
 
-            if acc_hits_x:
-                hit_scatter.set_offsets(np.column_stack([acc_hits_x, acc_hits_y]))
-            return [scanner_dot, hit_scatter, *beam_segs]
+                if agent_hits_x[i]:
+                    scatter.set_offsets(
+                        np.column_stack([agent_hits_x[i], agent_hits_y[i]])
+                    )
+            return all_artists
 
         anim = FuncAnimation(
             fig,
             _update,
-            frames=len(all_scans),
+            frames=max_frames,
             init_func=_init,
             interval=1 / fps * 1000,
             blit=True,
@@ -340,7 +377,12 @@ def _visualize_lidar_sampling(  # noqa: PLR0914, PLR0915
         return anim
 
     # ================================================================== STATIC
-    path_indices = [path_index] if path_index is not None else list(range(n_paths))
+    if path_index is None:
+        path_indices = list(range(n_paths))
+    elif isinstance(path_index, int):
+        path_indices = [path_index]
+    else:
+        path_indices = path_index
 
     fig, ax = plt.subplots(figsize=figsize)
     ax.imshow(img_array, cmap="gray", origin="upper")

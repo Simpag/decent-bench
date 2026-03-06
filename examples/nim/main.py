@@ -2,7 +2,7 @@ import math
 
 import matplotlib.pyplot as plt
 from src.dataset import NIMDatasetHandler
-from src.tools.visualize_dataset import visualize_nim_lidar_paths
+from src.tools.visualize_dataset import visualize_nim_dataset
 
 if __name__ == "__main__":
     # NIM path-based LIDAR sampling usage:
@@ -23,14 +23,13 @@ if __name__ == "__main__":
         label_transform=torch.tensor,
     )
 
-    for i in [0, 1, 2, 3, 4]:
-        anim = visualize_nim_lidar_paths(
-            nim_data,
-            animate=True,
-            path_index=i,
-            fps=2,
-            save_path=f"test_{i}.gif",
-        )
+    anim = visualize_nim_dataset(
+        nim_data,
+        animate=True,
+        path_index=[0, 1],
+        fps=2,
+        save_path=f"test_1-2.gif",
+    )
 
     print(
         nim_data.get_partitions()[0][0],
