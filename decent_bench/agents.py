@@ -154,6 +154,10 @@ class Agent:
         """Enable using agent as index, for example ``W[a1, a2]`` instead of ``W[a1.id, a2.id]``."""
         return self._id
 
+    def __repr__(self) -> str:
+        """Rrepresentation of the agent."""
+        return f"Agent(id={self._id}, hash={hash(self)})"
+
 
 @dataclass(frozen=True, eq=False)
 class AgentMetricsView:

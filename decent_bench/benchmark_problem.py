@@ -8,8 +8,16 @@ import networkx as nx
 import numpy as np
 
 import decent_bench.centralized_algorithms as ca
-from decent_bench.costs import Cost, LinearRegressionCost, LogisticRegressionCost, PyTorchCost
-from decent_bench.datasets import SyntheticClassificationDatasetHandler, SyntheticRegressionDatasetHandler
+from decent_bench.costs import (
+    Cost,
+    LinearRegressionCost,
+    LogisticRegressionCost,
+    PyTorchCost,
+)
+from decent_bench.datasets import (
+    SyntheticClassificationDatasetHandler,
+    SyntheticRegressionDatasetHandler,
+)
 from decent_bench.schemes import (
     AgentActivationScheme,
     AlwaysActive,
@@ -25,7 +33,12 @@ from decent_bench.schemes import (
     UniformDropRate,
 )
 from decent_bench.utils.array import Array
-from decent_bench.utils.types import Dataset, EmpiricalRiskBatchSize, SupportedDevices, SupportedFrameworks
+from decent_bench.utils.types import (
+    Dataset,
+    EmpiricalRiskBatchSize,
+    SupportedDevices,
+    SupportedFrameworks,
+)
 
 if TYPE_CHECKING:
     AnyGraph = nx.Graph[Any]
@@ -64,6 +77,7 @@ class BenchmarkProblem:
 
 def create_classification_problem(
     cost_cls: type[LogisticRegressionCost | PyTorchCost],
+    device: SupportedDevices = SupportedDevices.CPU,
     *,
     n_agents: int = 100,
     agent_state_snapshot_period: int = 1,
@@ -79,6 +93,7 @@ def create_classification_problem(
 
     Args:
         cost_cls: type of cost function
+        device: device to create data on, only relevant if using PyTorchCost
         n_agents: number of agents
         agent_state_snapshot_period: period for recording agent state snapshots, used for plot metrics
         n_neighbors_per_agent: number of neighbors per agent
@@ -104,8 +119,8 @@ def create_classification_problem(
         n_partitions=n_agents,
         n_samples_per_partition=10,
         n_features=3,
-        framework=SupportedFrameworks.PYTORCH if cost_cls is PyTorchCost else SupportedFrameworks.NUMPY,
-        device=SupportedDevices.CPU,
+        framework=(SupportedFrameworks.PYTORCH if cost_cls is PyTorchCost else SupportedFrameworks.NUMPY),
+        device=device,
         feature_dtype=np.float32 if cost_cls is PyTorchCost else np.float64,
         squeeze_targets=cost_cls is PyTorchCost,  # PyTorchCost expects squeezed targets for CrossEntropyLoss
         seed=0,
@@ -115,8 +130,8 @@ def create_classification_problem(
         n_partitions=1,
         n_samples_per_partition=100,  # 1 partition so this is number of samples in test set
         n_features=3,
-        framework=SupportedFrameworks.PYTORCH if cost_cls is PyTorchCost else SupportedFrameworks.NUMPY,
-        device=SupportedDevices.CPU,
+        framework=(SupportedFrameworks.PYTORCH if cost_cls is PyTorchCost else SupportedFrameworks.NUMPY),
+        device=device,
         feature_dtype=np.float32 if cost_cls is PyTorchCost else np.float64,
         squeeze_targets=cost_cls is PyTorchCost,
         seed=12345,
@@ -128,7 +143,10 @@ def create_classification_problem(
         except ImportError as e:
             raise ImportError("PyTorch must be installed to use PyTorchCost") from e
 
-        from decent_bench.utils.pytorch_utils import ArgmaxActivation, SimpleLinearModel  # noqa: PLC0415
+        from decent_bench.utils.pytorch_utils import (  # noqa: PLC0415
+            ArgmaxActivation,
+            SimpleLinearModel,
+        )
 
         def model_gen() -> torch.nn.Module:
             return SimpleLinearModel(
@@ -146,6 +164,7 @@ def create_classification_problem(
                 loss_fn=torch.nn.CrossEntropyLoss(),
                 final_activation=ArgmaxActivation(),
                 batch_size=batch_size,
+                device=device,
             )
             for p in dataset.get_partitions()
         ]
@@ -176,6 +195,7 @@ def create_classification_problem(
 
 def create_regression_problem(
     cost_cls: type[LinearRegressionCost | PyTorchCost],
+    device: SupportedDevices = SupportedDevices.CPU,
     *,
     n_agents: int = 100,
     agent_state_snapshot_period: int = 1,
@@ -191,6 +211,7 @@ def create_regression_problem(
 
     Args:
         cost_cls: type of cost function
+        device: device to create data on, only relevant if using PyTorchCost
         n_agents: number of agents
         agent_state_snapshot_period: period for recording agent state snapshots, used for plot metrics
         n_neighbors_per_agent: number of neighbors per agent
@@ -216,8 +237,8 @@ def create_regression_problem(
         n_partitions=n_agents,
         n_samples_per_partition=10,
         n_features=1,
-        framework=SupportedFrameworks.PYTORCH if cost_cls is PyTorchCost else SupportedFrameworks.NUMPY,
-        device=SupportedDevices.CPU,
+        framework=(SupportedFrameworks.PYTORCH if cost_cls is PyTorchCost else SupportedFrameworks.NUMPY),
+        device=device,
         feature_dtype=np.float32 if cost_cls is PyTorchCost else np.float64,
         target_dtype=np.float32 if cost_cls is PyTorchCost else np.float64,
         seed=0,
@@ -227,8 +248,8 @@ def create_regression_problem(
         n_partitions=1,
         n_samples_per_partition=100,  # 1 partition so this is number of samples in test set
         n_features=1,
-        framework=SupportedFrameworks.PYTORCH if cost_cls is PyTorchCost else SupportedFrameworks.NUMPY,
-        device=SupportedDevices.CPU,
+        framework=(SupportedFrameworks.PYTORCH if cost_cls is PyTorchCost else SupportedFrameworks.NUMPY),
+        device=device,
         feature_dtype=np.float32 if cost_cls is PyTorchCost else np.float64,
         target_dtype=np.float32 if cost_cls is PyTorchCost else np.float64,
         seed=12345,
@@ -250,7 +271,7 @@ def create_regression_problem(
             )
 
         costs = [
-            cost_cls(dataset=p, model=model_gen(), loss_fn=torch.nn.MSELoss(), batch_size=batch_size)  # type: ignore[call-arg]
+            cost_cls(dataset=p, model=model_gen(), loss_fn=torch.nn.MSELoss(), batch_size=batch_size, device=device)  # type: ignore[call-arg]
             for p in dataset.get_partitions()
         ]
         x_optimal = None

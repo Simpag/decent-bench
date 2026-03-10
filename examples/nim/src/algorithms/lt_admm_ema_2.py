@@ -21,7 +21,9 @@ class LT_ADMM_EMA_2(Algorithm):  # noqa: N801
     step_size: float | Callable[[int], float] = 0.01  # Local step size (gamma)
     penalty: float = 1.0  # Penalty parameter (rho)
     alpha: float = 0.5  # Relaxation parameter (alpha)
-    ema_factor: float = 0.9  # Exponential moving average factor, ema_factor * old + (1 - ema_factor) * new
+    ema_factor: float = (
+        0.9  # Exponential moving average factor, ema_factor * old + (1 - ema_factor) * new
+    )
     x0: "Array | None" = None  # Initial parameters (optional)
     name: str = "LT-ADMM-EMA-2"
 
@@ -43,7 +45,9 @@ class LT_ADMM_EMA_2(Algorithm):  # noqa: N801
         if callable(self.step_size):
             test_step_size = [self.step_size(k) for k in range(self.iterations)]
             if any(s <= 0 for s in test_step_size):
-                raise ValueError("step_size function must return positive values for all iterations")
+                raise ValueError(
+                    "step_size function must return positive values for all iterations"
+                )
         if self.penalty <= 0:
             raise ValueError("penalty must be positive")
         if self.alpha <= 0:
@@ -73,10 +77,16 @@ class LT_ADMM_EMA_2(Algorithm):  # noqa: N801
                 "neighbor_to_idx": neighbor_to_idx,
             }
 
-            i.initialize(x=self.x0, aux_vars=aux_vars, received_msgs=dict.fromkeys(neighbors, self.x0))
+            i.initialize(
+                x=self.x0,
+                aux_vars=aux_vars,
+                received_msgs=dict.fromkeys(neighbors, self.x0),
+            )
 
     def step(self, network: P2PNetwork, iteration: int) -> None:
-        step_size = self.step_size(iteration) if callable(self.step_size) else self.step_size
+        step_size = (
+            self.step_size(iteration) if callable(self.step_size) else self.step_size
+        )
 
         # Step 1: Local training phase
         for i in network.active_agents(iteration):
@@ -95,7 +105,9 @@ class LT_ADMM_EMA_2(Algorithm):  # noqa: N801
         for agent in network.agents():
             agent.x = iop.copy(agent.aux_vars["phi_ema"])
 
-    def _local_training(self, agent: Agent, network: P2PNetwork, step_size: float) -> None:
+    def _local_training(
+        self, agent: Agent, network: P2PNetwork, step_size: float
+    ) -> None:
         """
         Perform local training steps.
 
@@ -108,10 +120,15 @@ class LT_ADMM_EMA_2(Algorithm):  # noqa: N801
 
         for _ in range(self.local_steps):
             current_gradient = agent.cost.gradient(agent.aux_vars["phi"])
-            step = current_gradient + self.penalty * len(neighbors) * agent.aux_vars["phi"] - z_sum
+            step = (
+                current_gradient
+                + self.penalty * len(neighbors) * agent.aux_vars["phi"]
+                - z_sum
+            )
             agent.aux_vars["phi"] -= step_size * step
             agent.aux_vars["phi_ema"] = (
-                self.ema_factor * agent.aux_vars["phi_ema"] + (1 - self.ema_factor) * agent.aux_vars["phi"]
+                self.ema_factor * agent.aux_vars["phi_ema"]
+                + (1 - self.ema_factor) * agent.aux_vars["phi"]
             )
 
         agent.x = agent.aux_vars["phi"]
@@ -139,5 +156,6 @@ class LT_ADMM_EMA_2(Algorithm):  # noqa: N801
             j_idx = agent.aux_vars["neighbor_to_idx"][j]
             new_z = (1 - self.alpha) * agent.aux_vars["z_i"][j_idx] - self.alpha * msg
             agent.aux_vars["z_i"][j_idx] = (
-                self.ema_factor * agent.aux_vars["z_i"][j_idx] + (1 - self.ema_factor) * new_z
+                self.ema_factor * agent.aux_vars["z_i"][j_idx]
+                + (1 - self.ema_factor) * new_z
             )
