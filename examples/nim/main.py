@@ -9,11 +9,11 @@ if __name__ == "__main__":
     import torch
 
     nim_data = NIMDatasetHandler(
-        image_file="examples/nim/data/test.png",
-        n_partitions=5,
+        image_file="examples/nim/data/kth_floorplan.png",
+        n_partitions=2,
         samples_per_partition=2000000,
         seed=0,
-        paths="examples/nim/data/paths.json",
+        paths="examples/nim/data/kth_2_path.json",
         samples_per_pose=5,
         num_beams=5,
         fov=math.pi,
@@ -25,10 +25,10 @@ if __name__ == "__main__":
 
     anim = visualize_nim_dataset(
         nim_data,
-        animate=True,
+        animate=False,
         path_index=[0, 1],
         fps=2,
-        save_path=f"test_1-2.gif",
+        save_path=f"test_1-2.png",
     )
 
     print(

@@ -25,7 +25,10 @@ from matplotlib.backend_bases import Event, KeyEvent, MouseEvent
 from numpy.typing import NDArray
 from PIL import Image
 
-TITLE_TEXT = "Left click to add point, right click to finish an agent path. \n'i' to save, 'u' undo, 'q' to quit"
+TITLE_TEXT = (
+    "Left click to add point, right click to finish an agent path."
+     "\n'i' to save, 'u' undo, 'g' to toggle grid, 'q' to quit"
+)
 
 
 def run(image_path: Path, out_path: Path) -> None:  # noqa: D103, PLR0915
@@ -38,6 +41,7 @@ def run(image_path: Path, out_path: Path) -> None:  # noqa: D103, PLR0915
 
     paths: list[list[tuple[float, float]]] = []
     current_path: list[tuple[float, float]] = []
+    showing_grid: bool = False
 
     colormap = cm.get_cmap("tab10")
 
@@ -46,6 +50,10 @@ def run(image_path: Path, out_path: Path) -> None:  # noqa: D103, PLR0915
         ax.imshow(img_arr)
         # restore title (so it doesn't disappear after first click)
         ax.set_title(TITLE_TEXT)
+        ax.grid(showing_grid)
+        # Increase grid lines
+        ax.set_xticks(np.arange(0, img_arr.shape[1], 50))
+        ax.set_yticks(np.arange(0, img_arr.shape[0], 50))
 
         # draw completed paths with distinct colors
         for idx, p in enumerate(paths):
@@ -89,6 +97,8 @@ def run(image_path: Path, out_path: Path) -> None:  # noqa: D103, PLR0915
                 )
 
     def on_key(event: Event) -> None:
+        nonlocal showing_grid
+
         if not isinstance(event, KeyEvent):
             print("Non-key event received, ignoring.")  # noqa: T201
             return
@@ -110,9 +120,17 @@ def run(image_path: Path, out_path: Path) -> None:  # noqa: D103, PLR0915
                 paths.append(_connect_loop(current_path.copy(), img_arr))
                 current_path.clear()
             out_path.parent.mkdir(parents=True, exist_ok=True)
+
+            showing_grid = False  # turn off grid for clean output
+            redraw()
+
             with out_path.open("w", encoding="utf-8") as f:
                 json.dump(paths, f, indent=2)
             print(f"Saved {len(paths)} paths to {out_path}")  # noqa: T201
+        elif key == "g":
+            # Show grid lines for better alignment
+            showing_grid = not showing_grid
+            redraw()
         elif key == "q":
             plt.close(fig)
 
