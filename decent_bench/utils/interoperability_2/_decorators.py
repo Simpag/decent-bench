@@ -1,7 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import wraps
+from typing import TYPE_CHECKING
 from typing import Any, TypeVar
+
+from decent_bench.utils.array import Array
+from decent_bench.utils.types import SupportedFrameworks
+
+from ._backend_manager import set_backend
+from ._helpers import framework_device_of_array
+
+if TYPE_CHECKING:
+    from decent_bench.costs import Cost
 
 T = TypeVar("T", bound=Callable[..., Any])
 """A generic callable type variable."""
@@ -27,4 +38,4 @@ def autodecorate_cost_method[T: Callable[..., Any]](superclass_method: T) -> Cal
             This may lead to unexpected behavior or performance issues.
 
     """
-    raise NotImplementedError("This function is not yet implemented.")
+    pass

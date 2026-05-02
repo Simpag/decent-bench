@@ -3,17 +3,17 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from decent_bench.utils.array import Array
-from decent_bench.utils.types import ArrayKey, SupportedArrayTypes
+from decent_bench.utils.types import ArrayKey
 
 
 class _BackendOperators(ABC):
     @abstractmethod
-    def sign(self, array: Array | SupportedArrayTypes) -> Array:
+    def sign(self, array: Array) -> Array:
         """
         Return the sign of a tensor.
 
         Args:
-            array (Array | SupportedArrayTypes): The tensor.
+            array (Array): The tensor.
 
         Returns:
             Array: The sign tensor.
@@ -24,13 +24,13 @@ class _BackendOperators(ABC):
         """
 
     @abstractmethod
-    def maximum(self, array1: Array | SupportedArrayTypes, array2: Array | SupportedArrayTypes) -> Array:
+    def maximum(self, array1: Array, array2: Array) -> Array:
         """
         Element-wise maximum of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of element-wise maximum in the same framework type as the inputs.
@@ -74,17 +74,17 @@ class _BackendOperators(ABC):
     @abstractmethod
     def set_item(
         self,
-        array: Array | SupportedArrayTypes,
+        array: Array,
         key: ArrayKey,
-        value: Array | SupportedArrayTypes,
+        value: Array,
     ) -> None:
         """
         Set the item at the specified index of the array to the given value.
 
         Args:
-            array (Array | SupportedArrayTypes): The tensor.
+            array (Array): The tensor.
             key (ArrayKey): The key or index to set.
-            value (Array | SupportedArrayTypes): The value to set.
+            value (Array): The value to set.
 
         Raises:
             TypeError: If the type is not supported.

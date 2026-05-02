@@ -104,14 +104,12 @@ class _BackendArrayCreation(ABC):
         """
 
     @abstractmethod
-    def framework_device_of_array(
-        self, array: Array | SupportedArrayTypes
-    ) -> tuple[SupportedFrameworks, SupportedDevices]:
+    def framework_device_of_array(self, array: Array) -> tuple[SupportedFrameworks, SupportedDevices]:
         """
         Determine the framework and device of the given Array.
 
         Args:
-            array (Array | SupportedArrayTypes): Input array.
+            array (Array): Input array.
 
         Returns:
             tuple[SupportedFrameworks, SupportedDevices]: Framework and device of the array.

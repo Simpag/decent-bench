@@ -3,18 +3,17 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from decent_bench.utils.array import Array
-from decent_bench.utils.types import SupportedArrayTypes
 
 
 class _BackendLinalg(ABC):
     @abstractmethod
-    def dot(self, array1: Array | SupportedArrayTypes, array2: Array | SupportedArrayTypes) -> Array:
+    def dot(self, array1: Array, array2: Array) -> Array:
         """
         Dot product of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of the dot product in the same framework type as the inputs.
@@ -26,13 +25,13 @@ class _BackendLinalg(ABC):
         """
 
     @abstractmethod
-    def matmul(self, array1: Array | SupportedArrayTypes, array2: Array | SupportedArrayTypes) -> Array:
+    def matmul(self, array1: Array, array2: Array) -> Array:
         """
         Matrix multiplication of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of matrix multiplication in the same framework type as the inputs.

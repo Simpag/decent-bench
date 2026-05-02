@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from decent_bench.utils.array import Array
-from decent_bench.utils.types import SupportedArrayTypes
 
 
 class _BackendMath(ABC):
@@ -92,13 +91,13 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def add(self, array1: Array | SupportedArrayTypes, array2: Array | SupportedArrayTypes) -> Array:
+    def add(self, array1: Array, array2: Array) -> Array:
         """
         Element-wise addition of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of element-wise addition in the same framework type as the inputs.
@@ -110,13 +109,13 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def iadd[T: Array](self, array1: T, array2: Array | SupportedArrayTypes) -> T:
+    def iadd[T: Array](self, array1: T, array2: Array) -> T:
         """
         Element-wise in-place addition of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of element-wise in-place addition in the same framework type as the inputs.
@@ -128,13 +127,13 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def sub(self, array1: Array | SupportedArrayTypes, array2: Array | SupportedArrayTypes) -> Array:
+    def sub(self, array1: Array, array2: Array) -> Array:
         """
         Element-wise subtraction of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of element-wise subtraction in the same framework type as the inputs.
@@ -146,13 +145,13 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def isub[T: Array](self, array1: T, array2: Array | SupportedArrayTypes) -> T:
+    def isub[T: Array](self, array1: T, array2: Array) -> T:
         """
         Element-wise in-place subtraction of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of element-wise in-place subtraction in the same framework type as the inputs.
@@ -164,13 +163,13 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def mul(self, array1: Array | SupportedArrayTypes, array2: Array | SupportedArrayTypes) -> Array:
+    def mul(self, array1: Array, array2: Array) -> Array:
         """
         Element-wise multiplication of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of element-wise multiplication in the same framework type as the inputs.
@@ -182,13 +181,13 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def imul[T: Array](self, array1: T, array2: Array | SupportedArrayTypes) -> T:
+    def imul[T: Array](self, array1: T, array2: Array) -> T:
         """
         Element-wise in-place multiplication of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of element-wise in-place multiplication in the same framework type as the inputs.
@@ -200,13 +199,13 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def div(self, array1: Array | SupportedArrayTypes, array2: Array | SupportedArrayTypes) -> Array:
+    def div(self, array1: Array, array2: Array) -> Array:
         """
         Element-wise division of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of element-wise division in the same framework type as the inputs.
@@ -218,13 +217,13 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def idiv[T: Array](self, array1: T, array2: Array | SupportedArrayTypes) -> T:
+    def idiv[T: Array](self, array1: T, array2: Array) -> T:
         """
         Element-wise in-place division of two arrays.
 
         Args:
-            array1 (Array | SupportedArrayTypes): First input array.
-            array2 (Array | SupportedArrayTypes): Second input array.
+            array1 (Array): First input array.
+            array2 (Array): Second input array.
 
         Returns:
             Array: Result of element-wise in-place division in the same framework type as the inputs.
@@ -236,12 +235,12 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def power(self, array: Array | SupportedArrayTypes, p: float) -> Array:
+    def pow(self, array: Array, p: float) -> Array:
         """
         Raise array to p power.
 
         Args:
-            array (Array | SupportedArrayTypes): The tensor.
+            array (Array): The tensor.
             p (float): The power.
 
         Returns:
@@ -258,7 +257,7 @@ class _BackendMath(ABC):
         Element-wise in-place power of an array.
 
         Args:
-            array (Array | SupportedArrayTypes): Input array.
+            array (Array): Input array.
             p (float): The power.
 
         Returns:
@@ -270,12 +269,12 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def negative(self, array: Array | SupportedArrayTypes) -> Array:
+    def negative(self, array: Array) -> Array:
         """
         Negate array.
 
         Args:
-            array (Array | SupportedArrayTypes): The tensor.
+            array (Array): The tensor.
 
         Returns:
             Array: The negated tensor.
@@ -286,12 +285,12 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def absolute(self, array: Array | SupportedArrayTypes) -> Array:
+    def absolute(self, array: Array) -> Array:
         """
         Return the absolute value of a tensor.
 
         Args:
-            array (Array | SupportedArrayTypes): The tensor.
+            array (Array): The tensor.
 
         Returns:
             Array: The absolute value tensor.
@@ -302,31 +301,15 @@ class _BackendMath(ABC):
         """
 
     @abstractmethod
-    def sqrt(self, array: Array | SupportedArrayTypes) -> Array:
+    def sqrt(self, array: Array) -> Array:
         """
         Return the square root of a tensor.
 
         Args:
-            array (Array | SupportedArrayTypes): The tensor.
+            array (Array): The tensor.
 
         Returns:
             Array: The square root tensor.
-
-        Raises:
-            TypeError: If the type is not supported.
-
-        """
-
-    @abstractmethod
-    def sign(self, array: Array | SupportedArrayTypes) -> Array:
-        """
-        Return the sign of a tensor.
-
-        Args:
-            array (Array | SupportedArrayTypes): The tensor.
-
-        Returns:
-            Array: The sign tensor.
 
         Raises:
             TypeError: If the type is not supported.

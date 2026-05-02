@@ -1,11 +1,42 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from decent_bench.utils.array import Array
 
 
 class _BackendRng(ABC):
+    @abstractmethod
+    def set_seed(self, seed: int) -> None:
+        """
+        Set the global random seed for all RNG operations.
+
+        Args:
+            seed (int): The random seed to set.
+
+        """
+
+    @abstractmethod
+    def get_rng_state(self) -> dict[str, Any]:
+        """
+        Get the current RNG state.
+
+        Returns:
+            dict: A dictionary containing the current RNG state for all supported frameworks.
+
+        """
+
+    @abstractmethod
+    def set_rng_state(self, state: dict[str, Any]) -> None:
+        """
+        Set the RNG state.
+
+        Args:
+            state (dict): A dictionary containing the RNG state for all supported frameworks.
+
+        """
+
     @abstractmethod
     def normal(
         self,

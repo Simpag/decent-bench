@@ -92,6 +92,20 @@ class _BackendArrayManipulation(ABC):
         """
 
     @abstractmethod
+    def unsqueeze(self, array: Array, dim: int) -> Array:
+        """
+        Insert a new dimension of size one at the specified position.
+
+        Args:
+            array (Array): Input array.
+            dim (int): Position at which to insert the new dimension.
+
+        Returns:
+            Array: Unsqueezed array.
+
+        """
+
+    @abstractmethod
     def diag(self, array: Array) -> Array:
         """
         Create a diagonal matrix from a vector or extract a diagonal from a matrix.
