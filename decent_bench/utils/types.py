@@ -100,6 +100,8 @@ but typically it is:
 """
 
 
+# Its important that the enum values correspond to the folder names of the backends,
+# since those are used for dynamic imports in _backend_manager.py
 class SupportedFrameworks(Enum):
     """Enum for supported frameworks in decent-bench."""
 

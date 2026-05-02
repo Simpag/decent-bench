@@ -1,41 +1,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from functools import wraps
-from typing import TYPE_CHECKING
-from typing import Any, TypeVar
-
-from decent_bench.utils.array import Array
-from decent_bench.utils.types import SupportedFrameworks
-
-from ._backend_manager import set_backend
-from ._helpers import framework_device_of_array
-
-if TYPE_CHECKING:
-    from decent_bench.costs import Cost
-
-T = TypeVar("T", bound=Callable[..., Any])
-"""A generic callable type variable."""
+from typing import Any
 
 
 def autodecorate_cost_method[T: Callable[..., Any]](superclass_method: T) -> Callable[[Callable[..., Any]], T]:
     """
     Decorate Cost methods to automatically convert :class:`~decent_bench.utils.array.Array` args and return types.
 
-    It automatically converts input :class:`~decent_bench.utils.array.Array` arguments
-    to the cost's framework-specific array type and wraps the output based on the
-    superclass method's return type annotation.
+    With single-active-backend semantics, this decorator no longer needs to dispatch on
+    framework: it can unwrap :class:`~decent_bench.utils.array.Array` arguments to the
+    backend-native type, call the cost method, and wrap any returned native array back
+    in :class:`~decent_bench.utils.array.Array`.
 
     Args:
-        superclass_method: The method from the superclass (e.g., `Cost.function`) that is being overridden.
+        superclass_method: The method from the superclass (e.g. ``Cost.function``) that
+            is being overridden.
 
     Note:
-        * Only arguments that are instances of :class:`~decent_bench.utils.array.Array` are converted.
-            Other types are passed through unchanged.
-        * The first input argument of the decorated function must be ``x``.
-            This is to determine the target array type for output conversion. Otherwise a :class:`ValueError` is raised.
-        * Emits a warning if an input array's framework differs from the cost's framework.
-            This may lead to unexpected behavior or performance issues.
+        Implementation deferred until the new structure stabilizes.
 
     """
-    pass
+    raise NotImplementedError("autodecorate_cost_method has not been ported to interoperability_2 yet.")
