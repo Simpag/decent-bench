@@ -1,110 +1,56 @@
+"""
+Decorator that bridges :class:`Cost` superclass signatures with framework-native subclass implementations.
+
+Single-backend semantics make this decorator dramatically simpler than the v1 version: no
+framework dispatch, no cross-framework conversion, no ``to_array_like`` magic — just
+unwrap input :class:`Array` values to their native form, call the subclass method, and
+re-wrap the return if the superclass declared ``-> Array``.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable
 from functools import wraps
-from typing import TYPE_CHECKING, Any, TypeVar, cast
-
-from decent_bench.utils.array_old import Array
-from decent_bench.utils.logger import LOGGER
-from decent_bench.utils.types import SupportedDevices, SupportedFrameworks
-
-from ._functions import to_array_like, to_jax, to_numpy, to_tensorflow, to_torch
-from ._helpers import framework_device_of_array
-
-if TYPE_CHECKING:
-    from decent_bench.costs import Cost
-
-T = TypeVar("T", bound=Callable[..., Any])
-"""A generic callable type variable."""
-
-
-def _get_converter(framework: SupportedFrameworks) -> Callable[[Array | Any, SupportedDevices], Any]:
-    if framework == SupportedFrameworks.NUMPY:
-        return to_numpy
-    if framework == SupportedFrameworks.PYTORCH:
-        return to_torch
-    if framework == SupportedFrameworks.TENSORFLOW:
-        return to_tensorflow
-    if framework == SupportedFrameworks.JAX:
-        return to_jax
-
-    raise ValueError(f"Unsupported framework: {framework}")
+from typing import Any, cast
 
 
 def autodecorate_cost_method[T: Callable[..., Any]](superclass_method: T) -> Callable[[Callable[..., Any]], T]:
     """
-    Decorate Cost methods to automatically convert :class:`~decent_bench.utils.array.Array` args and return types.
+    Decorate a Cost method override so its body can use raw framework arrays.
 
-    It automatically converts input :class:`~decent_bench.utils.array.Array` arguments
-    to the cost's framework-specific array type and wraps the output based on the
-    superclass method's return type annotation.
+    Each :class:`Array` argument is unwrapped to its underlying value before the call.
+    If the *superclass* method's return annotation is :class:`Array`, the return value
+    is re-wrapped in :class:`Array` (unless already wrapped). All other arguments and
+    return values pass through unchanged.
 
     Args:
-        superclass_method: The method from the superclass (e.g., `Cost.function`) that is being overridden.
+        superclass_method: The base-class method being overridden (e.g. ``Cost.function``).
+            Used solely to look up the declared return type at decoration time.
 
-    Note:
-        * Only arguments that are instances of :class:`~decent_bench.utils.array.Array` are converted.
-            Other types are passed through unchanged.
-        * The first input argument of the decorated function must be ``x``.
-            This is to determine the target array type for output conversion. Otherwise a :class:`ValueError` is raised.
-        * Emits a warning if an input array's framework differs from the cost's framework.
-            This may lead to unexpected behavior or performance issues.
+    Example:
+        class LinearRegressionCost(EmpiricalRiskCost):
+            @autodecorate_cost_method(EmpiricalRiskCost.gradient)
+            def gradient(self, x: NDArray[float64], indices: ...) -> NDArray[float64]:
+                # ``x`` arrives as a numpy ndarray; the wrapper unwraps the caller's Array.
+                return self.A.T @ (self.A @ x - self.b) / self.n_samples
+                # Return value is wrapped back into Array because EmpiricalRiskCost.gradient
+                # is annotated ``-> Array``.
 
     """
+    from decent_bench.utils.array import Array  # noqa: PLC0415
+
+    return_is_array = superclass_method.__annotations__.get("return") is Array
 
     def decorator(func: Callable[..., Any]) -> T:
-        # Determine the expected return type from the superclass method's annotations.
-        try:
-            return_type_annotation = superclass_method.__annotations__["return"]
-        except (AttributeError, KeyError):
-            return_type_annotation = None
-
         @wraps(func)
-        def wrapper(self: Cost, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
-            converter = _get_converter(self.framework)
-
-            if len(args) > 0:
-                x_like = args[0]
-            elif "x" in kwargs:
-                x_like = kwargs["x"]
-            else:
-                raise ValueError("First argument must be 'x' for autodecorate_cost_method to work.")
-
-            new_args = []
-            for arg in args:
-                if isinstance(arg, Array):
-                    framework, _ = framework_device_of_array(arg)
-                    if framework != self.framework:
-                        LOGGER.warning(
-                            f"Converting array from framework {framework} to {self.framework}"
-                            f" in method {func.__name__}. This may lead to unexpected behavior or performance issues."
-                        )
-                    new_args.append(converter(arg, self.device))
-                else:
-                    new_args.append(arg)
-
-            new_kwargs = {}
-            for key, value in kwargs.items():
-                if isinstance(value, Array):
-                    framework, _ = framework_device_of_array(value)
-                    if framework != self.framework:
-                        LOGGER.warning(
-                            f"Converting array from framework {framework} to {self.framework}"
-                            f" in method {func.__name__}. This may lead to unexpected behavior or performance issues."
-                        )
-                    new_kwargs[key] = converter(value, self.device)
-                else:
-                    new_kwargs[key] = value
-
+        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+            new_args = [a.value if isinstance(a, Array) else a for a in args]
+            new_kwargs = {k: (v.value if isinstance(v, Array) else v) for k, v in kwargs.items()}
             result = func(self, *new_args, **new_kwargs)
-
-            if return_type_annotation is Array:
-                return to_array_like(result, x_like)
-
+            if return_is_array and not isinstance(result, Array):
+                return Array(result)
             return result
 
-        # Cast the wrapper to the type of the superclass method.
-        # This tells mypy that the decorated method is compatible with the superclass.
         return cast("T", wrapper)
 
     return decorator

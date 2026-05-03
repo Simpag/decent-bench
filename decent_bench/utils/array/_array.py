@@ -15,42 +15,12 @@ through the operator path.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, NoReturn, Self
+from typing import TYPE_CHECKING, Any, Self
+
+from decent_bench.utils.interoperability._backend_manager import _BACKEND
 
 if TYPE_CHECKING:
-    from decent_bench.utils.interoperability_2._abstracts._backend import _Backend
-    from decent_bench.utils.types import ArrayKey, SupportedArrayTypes
-
-
-class _NoBackendSet:
-    """Sentinel that raises a helpful error on any attribute access."""
-
-    __slots__ = ()
-
-    def __getattr__(self, name: str) -> NoReturn:
-        raise RuntimeError(
-            "Array operations require an active backend. Call "
-            "decent_bench.utils.interoperability_2.set_backend(...) first."
-        )
-
-
-# Module-level cache for the active backend. Bound by
-# :func:`decent_bench.utils.interoperability_2.set_backend`. Reading ``_BACKEND`` on
-# the hot path is a single global-name load — no ContextVar lookup, no get_backend()
-# function call.
-_BACKEND: _Backend = _NoBackendSet()  # type: ignore[assignment]
-
-
-def _set_active_backend(backend: _Backend) -> None:
-    """
-    Bind the active backend.
-
-    Called from :func:`decent_bench.utils.interoperability_2.set_backend`. Not part of
-    the public API.
-    """
-    global _BACKEND  # noqa: PLW0603
-    _BACKEND = backend
+    from decent_bench.utils.types import ArrayKey
 
 
 class Array:  # noqa: PLR0904
@@ -81,35 +51,35 @@ class Array:  # noqa: PLR0904
 
     # Binary arithmetic ----------------------------------------------------
 
-    def __add__(self, other: Array | int | float) -> Array:
-        return _BACKEND.add(self, other)  # type: ignore[arg-type]
+    def __add__(self, other: Array | float) -> Array:
+        return Array(self.value + (other.value if isinstance(other, Array) else other))
 
-    def __radd__(self, other: int | float) -> Array:
-        return _BACKEND.add(other, self)  # type: ignore[arg-type]
+    def __radd__(self, other: float) -> Array:
+        return Array(other + self.value)
 
-    def __sub__(self, other: Array | int | float) -> Array:
-        return _BACKEND.sub(self, other)  # type: ignore[arg-type]
+    def __sub__(self, other: Array | float) -> Array:
+        return Array(self.value - (other.value if isinstance(other, Array) else other))
 
-    def __rsub__(self, other: int | float) -> Array:
-        return _BACKEND.sub(other, self)  # type: ignore[arg-type]
+    def __rsub__(self, other: float) -> Array:
+        return Array(other - self.value)
 
-    def __mul__(self, other: Array | int | float) -> Array:
-        return _BACKEND.mul(self, other)  # type: ignore[arg-type]
+    def __mul__(self, other: Array | float) -> Array:
+        return Array(self.value * (other.value if isinstance(other, Array) else other))
 
-    def __rmul__(self, other: int | float) -> Array:
-        return _BACKEND.mul(other, self)  # type: ignore[arg-type]
+    def __rmul__(self, other: float) -> Array:
+        return Array(other * self.value)
 
-    def __truediv__(self, other: Array | int | float) -> Array:
-        return _BACKEND.div(self, other)  # type: ignore[arg-type]
+    def __truediv__(self, other: Array | float) -> Array:
+        return Array(self.value / (other.value if isinstance(other, Array) else other))
 
-    def __rtruediv__(self, other: int | float) -> Array:
-        return _BACKEND.div(other, self)  # type: ignore[arg-type]
+    def __rtruediv__(self, other: float) -> Array:
+        return Array(other / self.value)
 
     def __matmul__(self, other: Array) -> Array:
-        return _BACKEND.matmul(self, other)
+        return Array(self.value @ other.value)
 
     def __rmatmul__(self, other: Array) -> Array:
-        return _BACKEND.matmul(other, self)
+        return Array(other.value @ self.value)
 
     def __pow__(self, other: float) -> Array:
         return _BACKEND.pow(self, other)
@@ -120,24 +90,20 @@ class Array:  # noqa: PLR0904
     # `value` in place, jax/tensorflow rebind it. In every case the returned object is
     # the same wrapper instance, so we just discard the return and yield ``self``.
 
-    def __iadd__(self, other: Array | int | float) -> Self:
-        _BACKEND.iadd(self, other)  # type: ignore[arg-type]
+    def __iadd__(self, other: Array | float) -> Self:
+        _BACKEND.iadd(self, other)
         return self
 
-    def __isub__(self, other: Array | int | float) -> Self:
-        _BACKEND.isub(self, other)  # type: ignore[arg-type]
+    def __isub__(self, other: Array | float) -> Self:
+        _BACKEND.isub(self, other)
         return self
 
-    def __imul__(self, other: Array | int | float) -> Self:
-        _BACKEND.imul(self, other)  # type: ignore[arg-type]
+    def __imul__(self, other: Array | float) -> Self:
+        _BACKEND.imul(self, other)
         return self
 
-    def __itruediv__(self, other: Array | int | float) -> Self:
-        _BACKEND.idiv(self, other)  # type: ignore[arg-type]
-        return self
-
-    def __ipow__(self, other: float) -> Self:
-        _BACKEND.ipow(self, other)
+    def __itruediv__(self, other: Array | float) -> Self:
+        _BACKEND.idiv(self, other)
         return self
 
     # Unary ----------------------------------------------------------------
@@ -153,7 +119,7 @@ class Array:  # noqa: PLR0904
     def __getitem__(self, key: ArrayKey) -> Array:
         return _BACKEND.get_item(self, key)
 
-    def __setitem__(self, key: ArrayKey, value: Array | int | float) -> None:
+    def __setitem__(self, key: ArrayKey, value: Array | float) -> None:
         if not isinstance(value, Array):
             value = Array(value)
         _BACKEND.set_item(self, key, value)
@@ -163,13 +129,7 @@ class Array:  # noqa: PLR0904
     def __len__(self) -> int:
         return len(self.value)
 
-    def __iter__(self) -> Iterator[SupportedArrayTypes]:
-        return iter(self.value)
-
     # Coercion -------------------------------------------------------------
-
-    def __array__(self) -> SupportedArrayTypes:  # noqa: PLW3201
-        return self.value
 
     def __float__(self) -> float:
         return float(_BACKEND.astype(self, float))

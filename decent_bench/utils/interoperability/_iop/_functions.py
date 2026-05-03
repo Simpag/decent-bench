@@ -6,9 +6,9 @@ slot. The slot is rebound by :func:`decent_bench.utils.interoperability_2.set_ba
 via :func:`_set_active_backend`. Calling any of these before ``set_backend`` raises
 :class:`RuntimeError` via the sentinel's ``__getattr__``.
 
-Caching the backend at module level (rather than calling ``get_backend()`` per
-operation) drops the per-call cost from ~230 ns of dispatch overhead to ~40 ns at
-small array sizes — matching the operator path's efficiency.
+When this module and ``_Backend`` are mypyc-compiled in the same group,
+``_BACKEND.add(...)`` dispatches as a native compiled-to-compiled call — no Python
+attribute lookup, no bound-method allocation per call.
 """
 
 from __future__ import annotations
@@ -16,26 +16,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from decent_bench.utils.array import Array
-from decent_bench.utils.array._array import _NoBackendSet
-from decent_bench.utils.types import ArrayKey, SupportedDevices
+from decent_bench.utils.interoperability._backend_manager import _BACKEND
 
 if TYPE_CHECKING:
-    from decent_bench.utils.interoperability_2._abstracts._backend import _Backend
+    from numpy.typing import NDArray
 
+    from decent_bench.utils.array import Array
+    from decent_bench.utils.types import ArrayKey, SupportedDevices
 
-_BACKEND: _Backend = _NoBackendSet()  # type: ignore[assignment]
-
-
-def _set_active_backend(backend: _Backend) -> None:
-    """
-    Bind the active backend.
-
-    Called from :func:`decent_bench.utils.interoperability_2.set_backend`. Not part of
-    the public API.
-    """
-    global _BACKEND  # noqa: PLW0603
-    _BACKEND = backend
 
 # Array creation
 
@@ -86,6 +74,21 @@ def device_of(array: Array) -> SupportedDevices:
 def copy(array: Array) -> Array:
     """Return a copy of ``array``."""
     return _BACKEND.copy(array)
+
+
+def to_numpy(array: Array) -> NDArray[Any]:
+    """Convert ``array`` to a NumPy array on CPU."""
+    return _BACKEND.to_numpy(array)
+
+
+def from_numpy(array: NDArray[Any]) -> Array:
+    """Convert a NumPy array on CPU to an :class:`Array` on the active backend."""
+    return _BACKEND.from_numpy(array)
+
+
+def to_array(array: float | bool) -> Array:
+    """Convert a Python scalar to an :class:`Array` on the active backend."""
+    return _BACKEND.to_array(array)
 
 
 def stack(arrays: Sequence[Array], dim: int = 0) -> Array:
@@ -236,11 +239,6 @@ def idiv[T: Array](array1: T, array2: Array) -> T:
 def pow(array: Array, p: float) -> Array:  # noqa: A001
     """Raise ``array`` to power ``p``."""
     return _BACKEND.pow(array, p)
-
-
-def ipow[T: Array](array: T, p: float) -> T:
-    """In-place raise ``array`` to power ``p``."""
-    return _BACKEND.ipow(array, p)
 
 
 def negative(array: Array) -> Array:

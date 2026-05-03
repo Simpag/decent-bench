@@ -18,33 +18,19 @@ RNG-state snapshot self-consistent.
 from __future__ import annotations
 
 import random
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from decent_bench.utils.array import Array
-from decent_bench.utils.array._array import _NoBackendSet
-from decent_bench.utils.interoperability_2._abstracts._backend import _Backend
-from decent_bench.utils.interoperability_2._backend_manager import _instantiate
-from decent_bench.utils.types import SupportedFrameworks
+import numpy as np
 
-# Force numpy backend registration; the coordinator always needs numpy regardless of
-# the active backend. NumPy is a hard dependency of decent-bench, so this is safe.
-import decent_bench.utils.interoperability_2._numpy  # noqa: E402, F401
+from decent_bench.utils.interoperability._backend_manager import _BACKEND, _instantiate
+from decent_bench.utils.types import SupportedDevices, SupportedFrameworks
+
+if TYPE_CHECKING:
+    from decent_bench.utils.array import Array
+    from decent_bench.utils.interoperability._abstracts._backend import _Backend
 
 _NUMPY_STATE_KEY = "__numpy_rng_state__"
 _PYTHON_RANDOM_KEY = "__python_random_state__"
-
-
-# Module-level cache for the active backend. Bound by
-# :func:`decent_bench.utils.interoperability_2.set_backend`. Reading ``_BACKEND`` on
-# the hot RNG path (``normal``/``uniform``/etc.) is one global-name load instead of
-# the ContextVar + dict lookup that ``get_backend()`` does.
-_BACKEND: _Backend = _NoBackendSet()  # type: ignore[assignment]
-
-
-def _set_active_backend(backend: _Backend) -> None:
-    """Bind the active backend (called from set_backend)."""
-    global _BACKEND  # noqa: PLW0603
-    _BACKEND = backend
 
 
 class _RngCoordinator:
@@ -111,8 +97,7 @@ class _RngCoordinator:
         active.set_rng_state(state)
 
     def _numpy_backend(self) -> _Backend:
-        # Resolved lazily so the coordinator works before numpy is registered/instantiated.
-        return _instantiate(SupportedFrameworks.NUMPY)
+        return _instantiate(SupportedFrameworks.NUMPY, SupportedDevices.CPU)
 
 
 _COORDINATOR = _RngCoordinator()
@@ -145,6 +130,26 @@ def get_rng_state() -> dict[str, Any]:
 def set_rng_state(state: dict[str, Any]) -> None:
     """Restore an RNG snapshot produced by :func:`get_rng_state`."""
     _COORDINATOR.set_rng_state(state)
+
+
+def derive_seed() -> int:
+    """
+    Derive a new seed from the current state.
+
+    This is useful when you want to create a new generator that is independent but reproducible from the current one.
+    For example, you might use this to seed a data loader's RNG based on the main RNG to ensure that data shuffling is
+    reproducible across runs, but different from the main RNG used for model initialization.
+
+    Returns:
+        An integer seed derived from the current RNG state.
+
+    """
+    current_seed = get_seed()
+    if current_seed is None:
+        return random.randint(0, 2**32 - 1)
+    # Derive a new seed by hashing the current seed with some random data.
+    random_data = random.getrandbits(256)
+    return (current_seed + random_data) % (2**32)
 
 
 def normal(mean: float = 0.0, std: float = 1.0, shape: tuple[int, ...] = ()) -> Array:

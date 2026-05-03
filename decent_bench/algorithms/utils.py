@@ -37,7 +37,7 @@ def initial_states(x0: InitialStates, network: Network) -> "dict[Agent, Array]":
 
     """
     if x0 is None:
-        x0s = {a: iop.zeros(a.cost.framework, a.cost.device, a.cost.shape) for a in network.graph}
+        x0s = {a: iop.zeros(a.cost.shape) for a in network.graph}
     elif isinstance(x0, dict):
         # match by agent.id to handle deep-copied dicts whose keys are different instances
         x0_by_id = {}
@@ -61,7 +61,7 @@ def initial_states(x0: InitialStates, network: Network) -> "dict[Agent, Array]":
                 x0s[server] = iop.mean(iop.stack([x0s[a] for a in network.clients()], dim=0), dim=0)
             else:
                 x0s[server] = x0_by_id[server.id]
-    elif iop.is_supported_array_type(x0):
+    elif isinstance(x0, Array):
         for a in network.graph:
             if iop.shape(x0) != a.cost.shape:
                 raise ValueError(
@@ -73,7 +73,7 @@ def initial_states(x0: InitialStates, network: Network) -> "dict[Agent, Array]":
         raise ValueError(f"Invalid x0: expected None, Array, or dict[Agent, Array], got {type(x0)}")
 
     # ignore keys that are not network agents and normalize to the target framework/device
-    return {a: iop.to_array(x0s[a], framework=a.cost.framework, device=a.cost.device) for a in network.graph}
+    return x0s
 
 
 def normal_initialization(
@@ -96,10 +96,7 @@ def normal_initialization(
         The states are created using each agent's own ``cost.shape``, ``cost.framework``, and ``cost.device``.
 
     """
-    return {
-        a: iop.normal(shape=a.cost.shape, framework=a.cost.framework, device=a.cost.device, mean=mean, std=std)
-        for a in network.graph
-    }
+    return {a: iop.normal(shape=a.cost.shape, mean=mean, std=std) for a in network.graph}
 
 
 def uniform_initialization(
@@ -128,10 +125,7 @@ def uniform_initialization(
     if high <= low:
         raise ValueError(f"Expected high > low, got low={low} and high={high}.")
 
-    return {
-        a: iop.uniform(framework=a.cost.framework, device=a.cost.device, low=low, high=high, shape=a.cost.shape)
-        for a in network.graph
-    }
+    return {a: iop.uniform(low=low, high=high, shape=a.cost.shape) for a in network.graph}
 
 
 def pytorch_initialization(
@@ -168,22 +162,13 @@ def pytorch_initialization(
             raise TypeError(
                 f"Agent {first_agent} has cost of type {type(first_agent.cost).__name__!r}, expected PyTorchCost."
             )
-        return iop.to_array(
-            first_agent.cost._get_model_parameters(),  # noqa: SLF001
-            framework=first_agent.cost.framework,
-            device=first_agent.cost.device,
-        )
+        return Array(first_agent.cost._get_model_parameters())  # noqa: SLF001
 
     x0s = {}
     for a in network.graph:
         if not isinstance(a.cost, PyTorchCost):
             raise TypeError(f"Agent {a} has cost of type {type(a.cost).__name__!r}, expected PyTorchCost.")
-        val = iop.to_array(
-            a.cost._get_model_parameters(),  # noqa: SLF001
-            framework=a.cost.framework,
-            device=a.cost.device,
-        )
-        x0s[a] = val
+        x0s[a] = Array(a.cost._get_model_parameters())  # noqa: SLF001
     return x0s
 
 

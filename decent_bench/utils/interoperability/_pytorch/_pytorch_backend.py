@@ -10,11 +10,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+import numpy as np
 import torch
+from numpy.typing import NDArray
 
 from decent_bench.utils.array import Array
-from decent_bench.utils.interoperability_2._abstracts._backend import _Backend
-from decent_bench.utils.interoperability_2._backend_manager import register_backend
+from decent_bench.utils.interoperability._abstracts._backend import _Backend
+from decent_bench.utils.interoperability._backend_manager import register_backend
 from decent_bench.utils.types import ArrayKey, SupportedDevices, SupportedFrameworks
 
 
@@ -23,15 +25,13 @@ def _unwrap(array: Any) -> Any:  # noqa: ANN401
     return array.value if isinstance(array, Array) else array
 
 
-@register_backend(SupportedFrameworks.PYTORCH, aliases=("torch",))  # noqa: PLR0904
-class PyTorchBackend(_Backend):
+class PyTorchBackend(_Backend):  # noqa: PLR0904
     """PyTorch implementation of :class:`_Backend`."""
 
     def __init__(self, device: SupportedDevices = SupportedDevices.CPU) -> None:
         super().__init__(device)
         self._native_device: str = self.device_to_native(device)
         self._generator: torch.Generator = torch.Generator(device=self._native_device)
-        self._generator.manual_seed(int(torch.initial_seed()))
 
     # Array creation
 
@@ -77,6 +77,19 @@ class PyTorchBackend(_Backend):
 
     def copy(self, array: Array) -> Array:
         return Array(array.value.detach().clone())
+
+    def to_numpy(self, array: Array) -> NDArray[Any]:
+        """Return the value of an :class:`Array` as a NumPy array."""
+        v = array.value
+        if isinstance(v, torch.Tensor):
+            return v.cpu().numpy()
+        return np.asarray(v)
+
+    def from_numpy(self, array: NDArray[Any]) -> Array:
+        return Array(torch.from_numpy(array).to(device=self._native_device))
+
+    def to_array(self, array: float | bool) -> Array:
+        return Array(torch.tensor(array, device=self._native_device))
 
     def stack(self, arrays: Sequence[Array], dim: int = 0) -> Array:
         if len(arrays) == 0:
@@ -186,10 +199,6 @@ class PyTorchBackend(_Backend):
     def pow(self, array: Array, p: float) -> Array:
         return Array(torch.pow(array.value, p))
 
-    def ipow[T: Array](self, array: T, p: float) -> T:
-        array.value.pow_(p)
-        return array
-
     def negative(self, array: Array) -> Array:
         return Array(torch.neg(array.value))
 
@@ -276,3 +285,6 @@ class PyTorchBackend(_Backend):
         weights = torch.ones(v.shape[0], device=v.device)
         indices = weights.multinomial(num_samples=size, replacement=replace, generator=self._generator)
         return Array(v[indices])
+
+
+register_backend(SupportedFrameworks.PYTORCH, PyTorchBackend)

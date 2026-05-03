@@ -88,11 +88,11 @@ class SyntheticClassificationDatasetHandler(DatasetHandler):
                 # Convert to list of tuples, one per sample
                 partition_data = [
                     (
-                        iop.to_array(A[j], self.framework, self.device),
+                        iop.from_numpy(A[j]),
                         (
-                            iop.squeeze(iop.to_array(b[j : j + 1], self.framework, self.device))
+                            iop.squeeze(iop.from_numpy(b[j : j + 1]))
                             if self.squeeze_targets
-                            else iop.to_array(b[j : j + 1], self.framework, self.device)
+                            else iop.from_numpy(b[j : j + 1])
                         ),
                     )
                     for j in range(self._n_samples_per_partition)

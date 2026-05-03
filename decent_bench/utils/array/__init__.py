@@ -6,6 +6,6 @@ The implementation lives in :mod:`._array` so the mypyc-compiled artifacts
 this package directory rather than scattered across ``decent_bench/utils/``.
 """
 
-from ._array import Array, _NoBackendSet, _set_active_backend
+from ._array import Array
 
 __all__ = ["Array"]

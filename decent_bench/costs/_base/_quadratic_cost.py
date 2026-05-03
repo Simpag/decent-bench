@@ -146,8 +146,8 @@ class QuadraticCost(Cost):
         self._validate_cost_operation(other)
         if isinstance(other, QuadraticCost):
             return QuadraticCost(
-                A=iop.to_array(self.A + other.A, self.framework, self.device),
-                b=iop.to_array(self.b + other.b, self.framework, self.device),
+                A=iop.from_numpy(self.A + other.A),
+                b=iop.from_numpy(self.b + other.b),
                 c=self.c + other.c,
             )
 
@@ -163,8 +163,8 @@ class QuadraticCost(Cost):
         if isinstance(other, QuadraticCost):
             return self.__add__(
                 QuadraticCost(
-                    A=iop.to_array(-other.A, self.framework, self.device),
-                    b=iop.to_array(-other.b, self.framework, self.device),
+                    A=iop.from_numpy(-other.A),
+                    b=iop.from_numpy(-other.b),
                     c=-other.c,
                 )
             )

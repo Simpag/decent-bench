@@ -68,7 +68,7 @@ class ProxSkip(P2PAlgorithm):
         # Compute weights W_a = I - 1/(2χ)(I - W)
         n = len(agents)
         W = network.weights  # noqa: N806
-        I = iop.eye(n=n, framework=agents[0].cost.framework, device=agents[0].cost.device)  # noqa: E741, N806
+        I = iop.eye(n=n)  # noqa: E741, N806
         self.W_a = I - (1.0 / (2.0 * self.chi)) * (I - W)
 
         for i in agents:

@@ -204,6 +204,16 @@ class L1RegularizerCost(BaseRegularizerCost):
     .. math:: f(\mathbf{x}) = \|\mathbf{x}\|_1 = \sum_i |x_i|
     """
 
+    def __init__(
+        self,
+        shape: tuple[int, ...],
+        *,
+        framework: SupportedFrameworks = SupportedFrameworks.NUMPY,
+        device: SupportedDevices = SupportedDevices.CPU,
+    ):
+        super().__init__(shape, framework=framework, device=device)
+        self._zero_cache = iop.zeros(shape=self.shape)
+
     @cached_property
     def m_smooth(self) -> float:  # pyright: ignore[reportIncompatibleMethodOverride]
         return np.nan
@@ -220,13 +230,13 @@ class L1RegularizerCost(BaseRegularizerCost):
 
     def hessian(self, x: Array, **kwargs: Any) -> Array:  # noqa: ARG002, ANN401
         if self._hessian_cache is None:
-            self._hessian_cache = iop.zeros(shape=(self._dim, self._dim), framework=self.framework, device=self.device)
+            self._hessian_cache = iop.zeros(shape=(self._dim, self._dim))
         return self._hessian_cache
 
     def proximal(self, x: Array, rho: float, **kwargs: Any) -> Array:  # noqa: ARG002, ANN401
         if rho <= 0:
             raise ValueError("The penalty parameter rho must be positive.")
-        shrink = iop.maximum(iop.absolute(x) - rho, 0.0)
+        shrink = iop.maximum(iop.absolute(x) - rho, self._zero_cache)
         return iop.sign(x) * shrink
 
 
@@ -254,7 +264,7 @@ class L2RegularizerCost(BaseRegularizerCost):
 
     def hessian(self, x: Array, **kwargs: Any) -> Array:  # noqa: ARG002, ANN401
         if self._hessian_cache is None:
-            self._hessian_cache = iop.eye(n=self._dim, framework=self.framework, device=self.device)
+            self._hessian_cache = iop.eye(n=self._dim)
         return self._hessian_cache
 
     def proximal(self, x: Array, rho: float, **kwargs: Any) -> Array:  # noqa: ARG002, ANN401

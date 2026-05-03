@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable, Iterable
 from contextvars import ContextVar
 
-from decent_bench.utils.array._array import _NoBackendSet, _set_active_backend
 from decent_bench.utils.types import SupportedDevices, SupportedFrameworks
 
 from ._abstracts._backend import _Backend
+from ._no_backend import _NoBackend
 
 _BACKEND_REGISTRY: dict[SupportedFrameworks, type[_Backend]] = {}
 _BACKEND_INSTANCES: dict[SupportedFrameworks, _Backend] = {}
-_BACKEND_ALIASES: dict[str, SupportedFrameworks] = {}
 _ACTIVE_BACKEND: ContextVar[SupportedFrameworks | None] = ContextVar("decent_bench.iop2.active_backend", default=None)
+_BACKEND: _Backend = _NoBackend()
 
 
 def set_backend(
@@ -53,9 +52,6 @@ def set_backend(
     requested = _normalize(backend)
     requested_device = device if isinstance(device, SupportedDevices) else SupportedDevices(device)
 
-    if requested not in _BACKEND_REGISTRY:
-        _auto_import(requested)
-
     current = _ACTIVE_BACKEND.get()
     if current is not None and current != requested:
         raise RuntimeError(
@@ -63,12 +59,8 @@ def set_backend(
             "A single execution context may only use one backend."
         )
 
-    cached = _BACKEND_INSTANCES.get(requested)
-    if cached is None:
-        cls = _BACKEND_REGISTRY[requested]
-        cached = cls(device=requested_device)
-        _BACKEND_INSTANCES[requested] = cached
-    elif cached.device != requested_device:
+    cached = _instantiate(requested, requested_device)
+    if cached.device != requested_device:
         raise RuntimeError(
             f"Backend '{requested.value}' already configured with device "
             f"'{cached.device.value}', cannot reconfigure to '{requested_device.value}'."
@@ -76,106 +68,57 @@ def set_backend(
 
     if current is None:
         _ACTIVE_BACKEND.set(requested)
-        # Cache the backend on each module that has its own ``_BACKEND`` slot (Array,
-        # iop free functions, iop RNG) so dispatch is a single global-name load
-        # instead of a ContextVar + dict lookup per call.
-        _notify_backend_subscribers(cached)
-
-
-def _notify_backend_subscribers(backend: _Backend) -> None:
-    """
-    Push the active backend into every module that caches it as a module global.
-
-    Iop modules are imported lazily here (rather than at top of file) to avoid the
-    circular ``_backend_manager → _iop → _backend_manager`` import chain that would
-    otherwise occur at module load time.
-    """
-    _set_active_backend(backend)
-    from decent_bench.utils.interoperability_2._iop._functions import (  # noqa: PLC0415
-        _set_active_backend as _iop_func_set,
-    )
-    from decent_bench.utils.interoperability_2._iop._rng import (  # noqa: PLC0415
-        _set_active_backend as _iop_rng_set,
-    )
-    _iop_func_set(backend)
-    _iop_rng_set(backend)
-
-
-def get_backend() -> _Backend:
-    """
-    Return the active backend instance.
-
-    Raises:
-        RuntimeError: If no backend has been set in this context.
-
-    """
-    active = _ACTIVE_BACKEND.get()
-    if active is None:
-        raise RuntimeError(
-            "No backend has been set. Call set_backend(...) first, or instantiate a cost "
-            "function to automatically set the backend based on the cost's framework."
-        )
-    return _instantiate(active)
+        global _BACKEND  # noqa: PLW0603
+        _BACKEND = cached
 
 
 def register_backend(
     backend: SupportedFrameworks,
-    aliases: Iterable[str] | None = None,
-) -> Callable[[type[_Backend]], type[_Backend]]:
+    cls: type[_Backend],
+) -> None:
     """
     Register a backend class under a :class:`SupportedFrameworks` value.
 
-    Backends are instantiated lazily on first use. Re-registering replaces the previous
-    class and discards any cached instance, but keeps existing aliases (which still
-    point to the same canonical name).
+    Called once per backend module *after* the class definition (rather than as a
+    class decorator). Decorator-based registration would mark the decorated class as
+    non-extension under mypyc, blocking native compiled-to-compiled dispatch on
+    ``_BACKEND.add(...)`` and friends — the call-form keeps concrete backends as
+    extension classes.
+
+    Backends are instantiated lazily on first use. Re-registering replaces the
+    previous class and discards any cached instance, but keeps existing aliases
+    (which still point to the same canonical name).
 
     Args:
         backend: Canonical backend identifier.
-        aliases: Optional extra names users may pass to :func:`set_backend`. The
-            canonical string (``backend.value``) is always accepted and need not be
-            listed here. An alias that collides with a canonical name or another
-            backend's alias raises :class:`ValueError` when the decorator is applied.
+        cls: A concrete subclass of :class:`_Backend`.
+
+    Raises:
+        TypeError: If ``cls`` is not a subclass of :class:`_Backend`.
 
     """
-
-    def decorator(cls: type[_Backend]) -> type[_Backend]:
-        if not issubclass(cls, _Backend):
-            raise TypeError(f"Registered backend must be a subclass of _Backend, got {cls}")
-        _BACKEND_REGISTRY[backend] = cls
-        _BACKEND_INSTANCES.pop(backend, None)
-        for alias in aliases or ():
-            _register_alias(alias, backend)
-        return cls
-
-    return decorator
+    if not issubclass(cls, _Backend):
+        raise TypeError(f"Registered backend must be a subclass of _Backend, got {cls}")
+    _BACKEND_REGISTRY[backend] = cls
+    _BACKEND_INSTANCES.pop(backend, None)
 
 
-def reset_backend() -> None:
+def reset_backends() -> None:
     """
     Clear the active backend and all cached instances for the current context.
 
     Intended for tests or tightly scoped execution; not part of normal use. Registry
     entries (classes and aliases) are preserved.
     """
+    global _BACKEND  # noqa: PLW0603
     _ACTIVE_BACKEND.set(None)
     _BACKEND_INSTANCES.clear()
-    _notify_backend_subscribers(_NoBackendSet())  # type: ignore[arg-type]
-
-
-def _register_alias(alias: str, backend: SupportedFrameworks) -> None:
-    if alias in {f.value for f in SupportedFrameworks} and SupportedFrameworks(alias) != backend:
-        raise ValueError(f"Alias '{alias}' collides with the canonical name of '{SupportedFrameworks(alias).value}'.")
-    existing = _BACKEND_ALIASES.get(alias)
-    if existing is not None and existing != backend:
-        raise ValueError(f"Alias '{alias}' is already registered for backend '{existing.value}'.")
-    _BACKEND_ALIASES[alias] = backend
+    _BACKEND = _NoBackend()
 
 
 def _normalize(backend: SupportedFrameworks | str) -> SupportedFrameworks:
     if isinstance(backend, SupportedFrameworks):
         return backend
-    if backend in _BACKEND_ALIASES:
-        return _BACKEND_ALIASES[backend]
     try:
         return SupportedFrameworks(backend)
     except ValueError as exc:
@@ -183,9 +126,12 @@ def _normalize(backend: SupportedFrameworks | str) -> SupportedFrameworks:
         raise KeyError(f"Unknown backend '{backend}'. Valid backends: {valid}.") from exc
 
 
-def _instantiate(backend: SupportedFrameworks) -> _Backend:
+def _instantiate(backend: SupportedFrameworks, device: SupportedDevices) -> _Backend:
     if backend in _BACKEND_INSTANCES:
         return _BACKEND_INSTANCES[backend]
+
+    if backend not in _BACKEND_REGISTRY:
+        _auto_import(backend)
 
     cls = _BACKEND_REGISTRY.get(backend)
     if cls is None:
@@ -193,7 +139,7 @@ def _instantiate(backend: SupportedFrameworks) -> _Backend:
             f"Backend '{backend.value}' is not registered. Ensure the corresponding backend module is importable."
         )
 
-    instance = cls()
+    instance = cls(device=device)
     _BACKEND_INSTANCES[backend] = instance
     return instance
 

@@ -16,10 +16,12 @@ from typing import Any, cast
 
 import jax
 import jax.numpy as jnp
+import numpy as np
+from numpy.typing import NDArray
 
 from decent_bench.utils.array import Array
-from decent_bench.utils.interoperability_2._abstracts._backend import _Backend
-from decent_bench.utils.interoperability_2._backend_manager import register_backend
+from decent_bench.utils.interoperability._abstracts._backend import _Backend
+from decent_bench.utils.interoperability._backend_manager import register_backend
 from decent_bench.utils.types import ArrayKey, SupportedDevices, SupportedFrameworks
 
 
@@ -28,8 +30,7 @@ def _unwrap(array: Any) -> Any:  # noqa: ANN401
     return array.value if isinstance(array, Array) else array
 
 
-@register_backend(SupportedFrameworks.JAX)  # noqa: PLR0904
-class JaxBackend(_Backend):
+class JaxBackend(_Backend):  # noqa: PLR0904
     """JAX implementation of :class:`_Backend`."""
 
     def __init__(self, device: SupportedDevices = SupportedDevices.CPU) -> None:
@@ -78,6 +79,15 @@ class JaxBackend(_Backend):
 
     def copy(self, array: Array) -> Array:
         return Array(jnp.array(array.value, copy=True))
+
+    def to_numpy(self, array: Array) -> NDArray[Any]:
+        return np.array(array.value)
+
+    def from_numpy(self, array: NDArray[Any]) -> Array:
+        return Array(jnp.array(array, device=self._native_device))
+
+    def to_array(self, array: float | bool) -> Array:
+        return Array(jnp.array(array, device=self._native_device))
 
     def stack(self, arrays: Sequence[Array], dim: int = 0) -> Array:
         if len(arrays) == 0:
@@ -171,10 +181,6 @@ class JaxBackend(_Backend):
     def pow(self, array: Array, p: float) -> Array:
         return Array(jnp.power(array.value, p))
 
-    def ipow[T: Array](self, array: T, p: float) -> T:
-        array.value = jnp.power(array.value, p)
-        return array
-
     def negative(self, array: Array) -> Array:
         return Array(jnp.negative(array.value))
 
@@ -249,3 +255,6 @@ class JaxBackend(_Backend):
         """Split the stored key, advance state, return a sub-key for one draw."""
         self._key, sub = jax.random.split(self._key)
         return cast("jax.Array", sub)
+
+
+register_backend(SupportedFrameworks.JAX, JaxBackend)

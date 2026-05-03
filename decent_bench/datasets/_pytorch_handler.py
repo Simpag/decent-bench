@@ -157,7 +157,9 @@ class PyTorchDatasetHandler(DatasetHandler):
 
         partitions = cast(
             "list[Dataset]",
-            torch_random_split(self.torch_dataset, parts, generator=iop.rng_torch(SupportedDevices.CPU)),
+            torch_random_split(
+                self.torch_dataset, parts, generator=torch.Generator("cpu").manual_seed(iop.derive_seed())
+            ),
         )
 
         return partitions[: self.n_partitions]

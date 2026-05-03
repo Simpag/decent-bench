@@ -218,9 +218,9 @@ def create_quadratic_problem(
     LOGGER.info("Creating cost functions ...")
     A, b = [], []  # noqa: N806
     for _ in range(n_agents):
-        A_i = iop.uniform(shape=(size, size), framework=SupportedFrameworks.NUMPY, device=SupportedDevices.CPU)  # noqa: N806
+        A_i = iop.uniform(shape=(size, size))  # noqa: N806
         A.append((A_i + iop.transpose(A_i)) / 2 + size * iop.eye_like(A_i))
-        b.append(iop.normal(shape=(size,), std=10, framework=SupportedFrameworks.NUMPY, device=SupportedDevices.CPU))
+        b.append(iop.normal(shape=(size,), std=10))
 
     costs = [QuadraticCost(A[i], b[i]) for i in range(n_agents)]
     LOGGER.info("... done!")

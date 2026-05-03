@@ -79,7 +79,7 @@ class Solver(ABC):
 
     def __init__(self, cost: "Cost", x0: Array | None = None):
         if x0 is None:
-            x0 = iop.zeros(shape=cost.shape, framework=cost.framework, device=cost.device)
+            x0 = iop.zeros(shape=cost.shape)
         if iop.shape(x0) != cost.shape:
             raise ValueError("x0 and cost function domain must have same shape")
         self.x = x0

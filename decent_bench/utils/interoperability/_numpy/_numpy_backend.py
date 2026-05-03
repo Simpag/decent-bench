@@ -12,10 +12,11 @@ from copy import deepcopy
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from decent_bench.utils.array import Array
-from decent_bench.utils.interoperability_2._abstracts._backend import _Backend
-from decent_bench.utils.interoperability_2._backend_manager import register_backend
+from decent_bench.utils.interoperability._abstracts._backend import _Backend
+from decent_bench.utils.interoperability._backend_manager import register_backend
 from decent_bench.utils.types import ArrayKey, SupportedDevices, SupportedFrameworks
 
 
@@ -30,8 +31,7 @@ def _unwrap(array: Any) -> Any:  # noqa: ANN401
     return array.value if isinstance(array, Array) else array
 
 
-@register_backend(SupportedFrameworks.NUMPY, aliases=("np",))  # noqa: PLR0904
-class NumpyBackend(_Backend):
+class NumpyBackend(_Backend):  # noqa: PLR0904
     """NumPy implementation of :class:`_Backend`."""
 
     def __init__(self, device: SupportedDevices = SupportedDevices.CPU) -> None:
@@ -75,6 +75,19 @@ class NumpyBackend(_Backend):
         if isinstance(v, np.ndarray | np.generic):
             return Array(np.copy(v))
         return Array(deepcopy(v))
+
+    def to_numpy(self, array: Array) -> NDArray[Any]:
+        """Return the value of an :class:`Array` as a NumPy array."""
+        v = array.value
+        if isinstance(v, np.ndarray):
+            return v
+        return np.asarray(v)
+
+    def from_numpy(self, array: NDArray[Any]) -> Array:
+        return Array(array)
+
+    def to_array(self, array: float | bool) -> Array:
+        return Array(np.array(array))
 
     def stack(self, arrays: Sequence[Array], dim: int = 0) -> Array:
         if len(arrays) == 0:
@@ -169,10 +182,6 @@ class NumpyBackend(_Backend):
     def pow(self, array: Array, p: float) -> Array:
         return Array(np.power(array.value, p))
 
-    def ipow[T: Array](self, array: T, p: float) -> T:
-        array.value **= p
-        return array
-
     def negative(self, array: Array) -> Array:
         return Array(np.negative(array.value))
 
@@ -237,3 +246,6 @@ class NumpyBackend(_Backend):
 
     def choice(self, array: Array, size: int, replace: bool = True) -> Array:
         return Array(self._rng.choice(array.value, size=size, replace=replace))
+
+
+register_backend(SupportedFrameworks.NUMPY, NumpyBackend)

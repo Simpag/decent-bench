@@ -162,7 +162,7 @@ class PyTorchCost(EmpiricalRiskCost):
         self._optimizer: torch.optim.Optimizer | None = None
         self._scheduler: torch.optim.lr_scheduler.LRScheduler | None = None
 
-        self._pytorch_device: str = iop.device_to_framework_device(device, framework=self.framework)
+        self._pytorch_device: str = iop.device_to_native(device)
         self.model = self.model.to(self._pytorch_device)
         self.loss_fn = self.loss_fn.to(self._pytorch_device)
 
@@ -593,10 +593,11 @@ class PyTorchCost(EmpiricalRiskCost):
 
     def _init_dataloader(self) -> torch.utils.data.DataLoader[Any]:
         self._dataloader_kwargs.setdefault("shuffle", True)
+        rng = torch.Generator(device="cpu").manual_seed(iop.derive_seed())  # DataLoader shuffling must be done on CPU
         return torch.utils.data.DataLoader(
             cast("torch.utils.data.Dataset[Any]", self._dataset),
             batch_size=self.batch_size,
-            generator=iop.rng_torch(SupportedDevices.CPU),  # DataLoader shuffling must be done on CPU
+            generator=rng,
             collate_fn=self._collate_xy_idx,
             **self._dataloader_kwargs,
         )

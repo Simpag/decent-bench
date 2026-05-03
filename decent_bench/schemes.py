@@ -69,10 +69,11 @@ class MarkovChainActivation(AgentActivationScheme):
             [1 - inactive_to_active, inactive_to_active],
             [active_to_inactive, 1 - active_to_inactive],
         ])  # transition matrix
-        self._current_state = iop.rng_numpy().choice(self._states, p=[0, 1])
+        self._rng = np.random.default_rng(iop.derive_seed())
+        self._current_state = self._rng.choice(self._states, p=[0, 1])
 
     def is_active(self, iteration: int) -> bool:  # noqa: D102, ARG002
-        self._current_state = iop.rng_numpy().choice(
+        self._current_state = self._rng.choice(
             self._states,
             p=self._P[self._current_state],
         )  # evolve the Markov chain
@@ -98,11 +99,12 @@ class PoissonActivation(AgentActivationScheme):
         if mean_interval < 0:
             raise ValueError("`mean_interval` must be non-negative")
         self.mean_interval = mean_interval
-        self._countdown = int(iop.rng_numpy().poisson(self.mean_interval))
+        self._rng = np.random.default_rng(iop.derive_seed())
+        self._countdown = int(self._rng.poisson(self.mean_interval))
 
     def is_active(self, iteration: int) -> bool:  # noqa: D102, ARG002
         if self._countdown == 0:
-            self._countdown = int(iop.rng_numpy().poisson(self.mean_interval))
+            self._countdown = int(self._rng.poisson(self.mean_interval))
             return True
         self._countdown -= 1
         return False
@@ -180,7 +182,7 @@ class Quantization(CompressionScheme):
         self.n_significant_digits = n_significant_digits
 
     def compress(self, msg: Array) -> Array:  # noqa: D102
-        msg_np = iop.to_numpy(msg, dtype=np.float64)
+        msg_np = iop.to_numpy(msg).astype(np.float64)  # use float64 for accurate rounding regardless of input dtype
 
         # Round finite non-zero entries to the requested number of significant digits.
         mask = np.isfinite(msg_np) & (msg_np != 0)
@@ -189,7 +191,7 @@ class Quantization(CompressionScheme):
             scale = np.power(10.0, self.n_significant_digits - 1 - magnitudes)
             msg_np[mask] = np.round(msg_np[mask] * scale) / scale
 
-        return iop.to_array_like(msg_np, msg)
+        return iop.from_numpy(msg_np)
 
 
 class TopK(CompressionScheme):
@@ -231,7 +233,7 @@ class TopK(CompressionScheme):
         compressed_flat = np.zeros_like(flat_msg)
         compressed_flat[idx] = flat_msg[idx]
 
-        return iop.to_array_like(compressed_flat.reshape(msg_np.shape), msg)
+        return iop.from_numpy(compressed_flat.reshape(msg_np.shape))
 
 
 class RandK(CompressionScheme):
@@ -262,6 +264,7 @@ class RandK(CompressionScheme):
             raise ValueError(f"`k` must be in (0, 1], got {k}")
         self.k = k
         self.is_integer_k = isinstance(self.k, int)
+        self._rng = np.random.default_rng(iop.derive_seed())
 
     def compress(self, msg: Array) -> Array:  # noqa: D102
         msg_np = iop.to_numpy(msg)
@@ -269,11 +272,11 @@ class RandK(CompressionScheme):
         k_count = min(int(self.k), n_elements) if self.is_integer_k else max(1, int(np.ceil(self.k * n_elements)))
 
         flat_msg = msg_np.reshape(-1)
-        idx = iop.rng_numpy().choice(n_elements, size=k_count, replace=False)
+        idx = self._rng.choice(n_elements, size=k_count, replace=False)
         compressed_flat = np.zeros_like(flat_msg)
         compressed_flat[idx] = flat_msg[idx]
 
-        return iop.to_array_like(compressed_flat.reshape(msg_np.shape), msg)
+        return iop.from_numpy(compressed_flat.reshape(msg_np.shape))
 
 
 class DropScheme(ABC):
@@ -333,14 +336,13 @@ class GilbertElliott(DropScheme):
         self.good_to_bad = good_to_bad
         self._states = np.array([0, 1])  # good = 0, bad = 1
         self._P = np.array([[1 - good_to_bad, good_to_bad], [bad_to_good, 1 - bad_to_good]])  # transition matrix
-        self._current_state = iop.rng_numpy().choice(self._states)  # initialize uniformly at random
+        self._rng = np.random.default_rng(iop.derive_seed())
+        self._current_state = self._rng.choice(self._states)  # initialize uniformly at random
 
     def should_drop(self) -> bool:  # noqa: D102
-        self._current_state = iop.rng_numpy().choice(
-            self._states, p=self._P[self._current_state]
-        )  # evolve the Markov chain
+        self._current_state = self._rng.choice(self._states, p=self._P[self._current_state])  # evolve the Markov chain
 
-        return iop.rng_numpy().random() < self.drop_rate if self._current_state else False
+        return self._rng.random() < self.drop_rate if self._current_state else False
 
 
 class NoiseScheme(ABC):

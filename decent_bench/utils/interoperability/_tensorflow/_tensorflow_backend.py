@@ -15,10 +15,11 @@ from typing import Any, cast
 
 import numpy as np
 import tensorflow as tf
+from numpy.typing import NDArray
 
 from decent_bench.utils.array import Array
-from decent_bench.utils.interoperability_2._abstracts._backend import _Backend
-from decent_bench.utils.interoperability_2._backend_manager import register_backend
+from decent_bench.utils.interoperability._abstracts._backend import _Backend
+from decent_bench.utils.interoperability._backend_manager import register_backend
 from decent_bench.utils.types import ArrayKey, SupportedDevices, SupportedFrameworks
 
 
@@ -27,8 +28,7 @@ def _unwrap(array: Any) -> Any:  # noqa: ANN401
     return array.value if isinstance(array, Array) else array
 
 
-@register_backend(SupportedFrameworks.TENSORFLOW, aliases=("tf",))  # noqa: PLR0904
-class TensorflowBackend(_Backend):
+class TensorflowBackend(_Backend):  # noqa: PLR0904
     """TensorFlow implementation of :class:`_Backend`."""
 
     def __init__(self, device: SupportedDevices = SupportedDevices.CPU) -> None:
@@ -62,7 +62,7 @@ class TensorflowBackend(_Backend):
         return Array(tf.eye(rows, cols, dtype=v.dtype))
 
     def device_to_native(self, device: SupportedDevices) -> str:
-        if device in (SupportedDevices.CPU, SupportedDevices.GPU):
+        if device in {SupportedDevices.CPU, SupportedDevices.GPU}:
             return f"/{device.value}:0"
         raise ValueError(f"Unsupported device for TensorFlow: {device}")
 
@@ -76,6 +76,23 @@ class TensorflowBackend(_Backend):
 
     def copy(self, array: Array) -> Array:
         return Array(tf.identity(array.value))
+
+    def to_numpy(self, array: Array) -> NDArray[Any]:
+        """Return the value of an :class:`Array` as a NumPy array."""
+        v = array.value
+        if isinstance(v, tf.Tensor):
+            return v.numpy()
+        return np.asarray(v)
+
+    def from_numpy(self, array: NDArray[Any]) -> Array:
+        """Create an :class:`Array` from a NumPy array."""
+        with tf.device(self._native_device):
+            return Array(tf.convert_to_tensor(array))
+
+    def to_array(self, array: float | bool) -> Array:
+        """Convert a Python scalar to an :class:`Array` on this backend."""
+        with tf.device(self._native_device):
+            return Array(tf.convert_to_tensor(array))
 
     def stack(self, arrays: Sequence[Array], dim: int = 0) -> Array:
         if len(arrays) == 0:
@@ -184,10 +201,6 @@ class TensorflowBackend(_Backend):
     def pow(self, array: Array, p: float) -> Array:
         return Array(tf.pow(array.value, p))
 
-    def ipow[T: Array](self, array: T, p: float) -> T:
-        array.value = tf.pow(array.value, p)
-        return array
-
     def negative(self, array: Array) -> Array:
         return Array(tf.negative(array.value))
 
@@ -283,3 +296,6 @@ class TensorflowBackend(_Backend):
             scores = self._generator.uniform(shape=(n,), dtype=tf.float32)
             indices = tf.cast(tf.math.top_k(scores, k=size).indices, tf.int32)
         return Array(tf.gather(v, indices))
+
+
+register_backend(SupportedFrameworks.TENSORFLOW, TensorflowBackend)

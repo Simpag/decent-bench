@@ -131,7 +131,7 @@ class KaggleDatasetHandler(DatasetHandler):
 
     def _random_split(self, df: pd.DataFrame) -> Sequence[Dataset]:
         # Shuffle the dataframe
-        df = df.sample(frac=1, random_state=iop.rng_numpy(), replace=False).reset_index(drop=True)
+        df = df.sample(frac=1, random_state=iop.derive_seed(), replace=False).reset_index(drop=True)
 
         partitions: list[Dataset] = []
         for i in range(self.n_partitions):
@@ -145,15 +145,7 @@ class KaggleDatasetHandler(DatasetHandler):
     def _create_partition(self, df_partition: pd.DataFrame) -> Dataset:
         partition: Dataset = []
         for _, row in df_partition.iterrows():
-            x = iop.to_array(
-                row[self.feature_columns].to_numpy().astype(self.dtype),
-                framework=self.framework,
-                device=self.device,
-            )
-            y = iop.to_array(
-                row[self.target_columns].to_numpy().astype(self.dtype),
-                framework=self.framework,
-                device=self.device,
-            )
+            x = iop.from_numpy(row[self.feature_columns].to_numpy().astype(self.dtype))
+            y = iop.from_numpy(row[self.target_columns].to_numpy().astype(self.dtype))
             partition.append((x, y))
         return partition

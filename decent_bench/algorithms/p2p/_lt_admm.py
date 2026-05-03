@@ -65,11 +65,7 @@ class LT_ADMM(P2PAlgorithm):  # noqa: N801
         # Initialize agents with auxiliary variables
         for i in network.agents():
             neighbors = network.neighbors(i)
-            z_i = iop.zeros(
-                shape=(len(neighbors), *iop.shape(x0[i])),
-                framework=i.cost.framework,
-                device=i.cost.device,
-            )
+            z_i = iop.zeros(shape=(len(neighbors), *iop.shape(x0[i])))
             neighbor_to_idx: dict[Agent, int] = {}  # Mapping from neighbor to index in z_i array
 
             for idx, j in enumerate(neighbors):

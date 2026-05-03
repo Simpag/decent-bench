@@ -404,7 +404,7 @@ class P2PNetwork(Network):
         for i in agents:
             W[i, i] = 1 - sum(W[i])
 
-        self.W = iop.to_array(W, agents[0].cost.framework, agents[0].cost.device)
+        self.W = iop.from_numpy(W)
         return self.W
 
     @weights.setter
@@ -429,14 +429,6 @@ class P2PNetwork(Network):
         if iop.shape(value) != (len(self.agents()), len(self.agents())):
             raise ValueError(f"Weights matrix must be of shape ({len(self.agents())}, {len(self.agents())})")
 
-        framework, device = iop.framework_device_of_array(value)
-
-        if framework != self.agents()[0].cost.framework or device != self.agents()[0].cost.device:
-            raise ValueError(
-                f"Weights matrix must be on the same framework and device as the agents' "
-                f"cost functions ({self.agents()[0].cost.framework}, {self.agents()[0].cost.device})"
-            )
-
         self.W = value
 
     @cached_property
@@ -452,11 +444,8 @@ class P2PNetwork(Network):
             nodelist=cast("Collection[Any]", agents),
             dtype=float,
         )  # type: ignore[call-overload]
-        return iop.to_array(
-            adjacency_matrix,
-            agents[0].cost.framework,
-            agents[0].cost.device,
-        )
+        return iop.from_numpy(adjacency_matrix)
+
 
     def neighbors(self, agent: Agent) -> list[Agent]:
         """Alias for :meth:`~decent_bench.networks.Network.connected_agents`."""

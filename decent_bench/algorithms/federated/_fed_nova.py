@@ -204,7 +204,7 @@ class FedNova(FedAlgorithm):
             local_x, cumulative_gradient, a_i = self._compute_local_update(client, server)
             client.x = local_x
             client.aux_vars["_fednova_cumulative_gradient"] = cumulative_gradient
-            normalizer_upload = iop.reshape(iop.to_array_like(a_i, cumulative_gradient), (1,))
+            normalizer_upload = iop.reshape(iop.to_array(a_i), (1,))
             network.send(sender=client, receiver=server, msg=normalizer_upload)
 
     def _compute_local_update(self, client: "Agent", server: "Agent") -> tuple["Array", "Array", float]:
