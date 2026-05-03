@@ -21,11 +21,30 @@ import random
 from typing import Any
 
 from decent_bench.utils.array import Array
+from decent_bench.utils.array._array import _NoBackendSet
 from decent_bench.utils.interoperability_2._abstracts._backend import _Backend
-from decent_bench.utils.interoperability_2._backend_manager import _instantiate, get_backend
+from decent_bench.utils.interoperability_2._backend_manager import _instantiate
 from decent_bench.utils.types import SupportedFrameworks
 
+# Force numpy backend registration; the coordinator always needs numpy regardless of
+# the active backend. NumPy is a hard dependency of decent-bench, so this is safe.
+import decent_bench.utils.interoperability_2._numpy  # noqa: E402, F401
+
 _NUMPY_STATE_KEY = "__numpy_rng_state__"
+_PYTHON_RANDOM_KEY = "__python_random_state__"
+
+
+# Module-level cache for the active backend. Bound by
+# :func:`decent_bench.utils.interoperability_2.set_backend`. Reading ``_BACKEND`` on
+# the hot RNG path (``normal``/``uniform``/etc.) is one global-name load instead of
+# the ContextVar + dict lookup that ``get_backend()`` does.
+_BACKEND: _Backend = _NoBackendSet()  # type: ignore[assignment]
+
+
+def _set_active_backend(backend: _Backend) -> None:
+    """Bind the active backend (called from set_backend)."""
+    global _BACKEND  # noqa: PLW0603
+    _BACKEND = backend
 
 
 class _RngCoordinator:
@@ -46,7 +65,7 @@ class _RngCoordinator:
 
         """
         random.seed(seed)
-        active = get_backend()
+        active = _BACKEND
         active.set_seed(seed)
         numpy_backend = self._numpy_backend()
         if numpy_backend is not active:
@@ -60,14 +79,17 @@ class _RngCoordinator:
 
     def get_rng_state(self) -> dict[str, Any]:
         """
-        Snapshot the RNG state of the active backend (and of NumPy if it is auxiliary).
+        Snapshot the RNG state of the active backend, NumPy (if auxiliary), and Python's random.
 
         The active backend's state is returned as-is. If the active backend is not NumPy,
-        NumPy's state is embedded under the reserved key ``"__numpy_rng_state__"``.
+        NumPy's state is embedded under the reserved key ``"__numpy_rng_state__"``. The
+        Python ``random`` state is always embedded under ``"__python_random_state__"`` so
+        that incidental ``random.random()`` calls survive a snapshot/restore round-trip.
 
         """
-        active = get_backend()
+        active = _BACKEND
         state = active.get_rng_state()
+        state[_PYTHON_RANDOM_KEY] = random.getstate()
         numpy_backend = self._numpy_backend()
         if numpy_backend is not active:
             state[_NUMPY_STATE_KEY] = numpy_backend.get_rng_state()
@@ -77,7 +99,10 @@ class _RngCoordinator:
         """Restore a snapshot produced by :meth:`get_rng_state`."""
         # Copy so we can mutate without surprising the caller.
         state = dict(state)
-        active = get_backend()
+        python_state = state.pop(_PYTHON_RANDOM_KEY, None)
+        if python_state is not None:
+            random.setstate(python_state)
+        active = _BACKEND
         numpy_backend = self._numpy_backend()
         if numpy_backend is not active:
             numpy_state = state.pop(_NUMPY_STATE_KEY, None)
@@ -124,24 +149,24 @@ def set_rng_state(state: dict[str, Any]) -> None:
 
 def normal(mean: float = 0.0, std: float = 1.0, shape: tuple[int, ...] = ()) -> Array:
     """Draw normally distributed samples on the active backend."""
-    return get_backend().normal(mean, std, shape)
+    return _BACKEND.normal(mean, std, shape)
 
 
 def uniform(low: float = 0.0, high: float = 1.0, shape: tuple[int, ...] = ()) -> Array:
     """Draw uniformly distributed samples on the active backend."""
-    return get_backend().uniform(low, high, shape)
+    return _BACKEND.uniform(low, high, shape)
 
 
 def normal_like(array: Array, mean: float = 0.0, std: float = 1.0) -> Array:
     """Draw normally distributed samples shaped like ``array``."""
-    return get_backend().normal_like(array, mean, std)
+    return _BACKEND.normal_like(array, mean, std)
 
 
 def uniform_like(array: Array, low: float = 0.0, high: float = 1.0) -> Array:
     """Draw uniformly distributed samples shaped like ``array``."""
-    return get_backend().uniform_like(array, low, high)
+    return _BACKEND.uniform_like(array, low, high)
 
 
 def choice(array: Array, size: int, replace: bool = True) -> Array:
     """Sample ``size`` elements from ``array``."""
-    return get_backend().choice(array, size, replace)
+    return _BACKEND.choice(array, size, replace)

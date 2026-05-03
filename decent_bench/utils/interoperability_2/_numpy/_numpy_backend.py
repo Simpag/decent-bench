@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from copy import deepcopy
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
-from numpy.typing import NDArray
 
 from decent_bench.utils.array import Array
 from decent_bench.utils.interoperability_2._abstracts._backend import _Backend
@@ -20,45 +19,47 @@ from decent_bench.utils.interoperability_2._backend_manager import register_back
 from decent_bench.utils.types import ArrayKey, SupportedDevices, SupportedFrameworks
 
 
-def _wrap(value: NDArray[Any]) -> Array:
-    """Wrap a raw NumPy value in an :class:`Array`. No-op if already wrapped."""
-    if isinstance(value, Array):
-        return value
-    return Array(value)
+def _unwrap(array: Any) -> Any:  # noqa: ANN401
+    """
+    Return the underlying value of an :class:`Array`, or pass ``array`` through.
 
-
-def _unwrap(array: Array | NDArray[Any]) -> NDArray[Any]:
-    """Return the underlying NumPy value of an :class:`Array` (or ``array`` itself)."""
-    return cast("NDArray[Any]", array.value if isinstance(array, Array) else array)
+    Typed as ``Any`` because operator dunders may pass either an :class:`Array` or a
+    Python scalar; the strict abstract signature would force a ``cast`` at every call
+    site without runtime benefit.
+    """
+    return array.value if isinstance(array, Array) else array
 
 
 @register_backend(SupportedFrameworks.NUMPY, aliases=("np",))  # noqa: PLR0904
 class NumpyBackend(_Backend):
     """NumPy implementation of :class:`_Backend`."""
 
-    def __init__(self) -> None:
+    def __init__(self, device: SupportedDevices = SupportedDevices.CPU) -> None:
+        if device != SupportedDevices.CPU:
+            raise ValueError(f"NumPy backend only supports CPU, got '{device.value}'.")
+        super().__init__(device)
         self._rng: np.random.Generator = np.random.default_rng()
 
     # Array creation
 
     def zeros(self, shape: tuple[int, ...]) -> Array:
-        return _wrap(np.zeros(shape))
+        return Array(np.zeros(shape))
 
     def zeros_like(self, array: Array) -> Array:
-        return _wrap(np.zeros_like(_unwrap(array)))
+        return Array(np.zeros_like(array.value))
 
     def ones(self, shape: tuple[int, ...]) -> Array:
-        return _wrap(np.ones(shape))
+        return Array(np.ones(shape))
 
     def ones_like(self, array: Array) -> Array:
-        return _wrap(np.ones_like(_unwrap(array)))
+        return Array(np.ones_like(array.value))
 
     def eye(self, n: int) -> Array:
-        return _wrap(np.eye(n))
+        return Array(np.eye(n))
 
     def eye_like(self, array: Array) -> Array:
-        value: NDArray[Any] = _unwrap(array)
-        return _wrap(np.eye(*value.shape[-2:], dtype=value.dtype))
+        v = array.value
+        return Array(np.eye(*v.shape[-2:], dtype=v.dtype))
 
     def device_to_native(self, device: SupportedDevices) -> Any:  # noqa: ANN401
         # NumPy has no explicit device management; surface the request unchanged.
@@ -70,46 +71,46 @@ class NumpyBackend(_Backend):
     # Array manipulation
 
     def copy(self, array: Array) -> Array:
-        value = _unwrap(array)
-        if isinstance(value, np.ndarray | np.generic):
-            return _wrap(np.copy(value))
-        return _wrap(deepcopy(value))
+        v = array.value
+        if isinstance(v, np.ndarray | np.generic):
+            return Array(np.copy(v))
+        return Array(deepcopy(v))
 
     def stack(self, arrays: Sequence[Array], dim: int = 0) -> Array:
         if len(arrays) == 0:
             raise ValueError("Cannot stack an empty sequence of arrays.")
-        return _wrap(np.stack([_unwrap(a) for a in arrays], axis=dim))
+        return Array(np.stack([a.value for a in arrays], axis=dim))
 
     def reshape(self, array: Array, shape: tuple[int, ...]) -> Array:
-        return _wrap(np.reshape(_unwrap(array), shape))
+        return Array(np.reshape(array.value, shape))
 
     def transpose(self, array: Array, dim: tuple[int, ...] | None = None) -> Array:
-        return _wrap(np.transpose(_unwrap(array), axes=dim))
+        return Array(np.transpose(array.value, axes=dim))
 
     def shape(self, array: Array) -> tuple[int, ...]:
-        return tuple(_unwrap(array).shape)
+        return tuple(array.value.shape)
 
     def squeeze(self, array: Array, dim: int | tuple[int, ...] | None = None) -> Array:
-        return _wrap(np.squeeze(_unwrap(array), axis=dim))
+        return Array(np.squeeze(array.value, axis=dim))
 
     def unsqueeze(self, array: Array, dim: int) -> Array:
-        return _wrap(np.expand_dims(_unwrap(array), axis=dim))
+        return Array(np.expand_dims(array.value, axis=dim))
 
     def diag(self, array: Array) -> Array:
-        return _wrap(np.diag(_unwrap(array)))
+        return Array(np.diag(array.value))
 
     def astype(self, array: Array, dtype: type[float | int | bool]) -> float | int | bool:
-        value = _unwrap(array)
-        scalar = value.item() if hasattr(value, "item") else value
+        v = array.value
+        scalar = v.item() if hasattr(v, "item") else v
         return dtype(scalar)
 
     # Linalg
 
     def dot(self, array1: Array, array2: Array) -> Array:
-        return _wrap(np.dot(_unwrap(array1), _unwrap(array2)))
+        return Array(np.dot(array1.value, array2.value))
 
     def matmul(self, array1: Array, array2: Array) -> Array:
-        return _wrap(_unwrap(array1) @ _unwrap(array2))
+        return Array(array1.value @ array2.value)
 
     def norm(
         self,
@@ -118,92 +119,88 @@ class NumpyBackend(_Backend):
         dim: int | tuple[int, ...] | None = None,
         keepdims: bool = False,
     ) -> Array:
-        return _wrap(np.linalg.norm(_unwrap(array), ord=p, axis=dim, keepdims=keepdims))
+        return Array(np.linalg.norm(array.value, ord=p, axis=dim, keepdims=keepdims))
 
     # Math reductions
 
     def sum(self, array: Array, dim: int | tuple[int, ...] | None = None, keepdims: bool = False) -> Array:
-        return _wrap(np.sum(_unwrap(array), axis=dim, keepdims=keepdims))
+        return Array(np.sum(array.value, axis=dim, keepdims=keepdims))
 
     def mean(self, array: Array, dim: int | tuple[int, ...] | None = None, keepdims: bool = False) -> Array:
-        return _wrap(np.mean(_unwrap(array), axis=dim, keepdims=keepdims))
+        return Array(np.mean(array.value, axis=dim, keepdims=keepdims))
 
     def min(self, array: Array, dim: int | tuple[int, ...] | None = None, keepdims: bool = False) -> Array:
-        return _wrap(np.min(_unwrap(array), axis=dim, keepdims=keepdims))
+        return Array(np.min(array.value, axis=dim, keepdims=keepdims))
 
     def max(self, array: Array, dim: int | tuple[int, ...] | None = None, keepdims: bool = False) -> Array:
-        return _wrap(np.max(_unwrap(array), axis=dim, keepdims=keepdims))
+        return Array(np.max(array.value, axis=dim, keepdims=keepdims))
 
-    # Math elementwise
+    # Math elementwise — operands may be Array or scalar (operator dunders pass either).
+    # ``Array | float`` covers both: PEP 484's numeric tower implicitly admits ``int``.
 
-    def add(self, array1: Array, array2: Array) -> Array:
-        return _wrap(np.add(_unwrap(array1), _unwrap(array2)))
+    def add(self, array1: Array | float, array2: Array | float) -> Array:
+        return Array(np.add(_unwrap(array1), _unwrap(array2)))
 
-    def iadd[T: Array](self, array1: T, array2: Array) -> T:
-        value = _unwrap(array1)
-        value += _unwrap(array2)
+    def iadd[T: Array](self, array1: T, array2: Array | float) -> T:
+        array1.value += _unwrap(array2)
         return array1
 
-    def sub(self, array1: Array, array2: Array) -> Array:
-        return _wrap(np.subtract(_unwrap(array1), _unwrap(array2)))
+    def sub(self, array1: Array | float, array2: Array | float) -> Array:
+        return Array(np.subtract(_unwrap(array1), _unwrap(array2)))
 
-    def isub[T: Array](self, array1: T, array2: Array) -> T:
-        value = _unwrap(array1)
-        value -= _unwrap(array2)
+    def isub[T: Array](self, array1: T, array2: Array | float) -> T:
+        array1.value -= _unwrap(array2)
         return array1
 
-    def mul(self, array1: Array, array2: Array) -> Array:
-        return _wrap(np.multiply(_unwrap(array1), _unwrap(array2)))
+    def mul(self, array1: Array | float, array2: Array | float) -> Array:
+        return Array(np.multiply(_unwrap(array1), _unwrap(array2)))
 
-    def imul[T: Array](self, array1: T, array2: Array) -> T:
-        value = _unwrap(array1)
-        value *= _unwrap(array2)
+    def imul[T: Array](self, array1: T, array2: Array | float) -> T:
+        array1.value *= _unwrap(array2)
         return array1
 
-    def div(self, array1: Array, array2: Array) -> Array:
-        return _wrap(np.divide(_unwrap(array1), _unwrap(array2)))
+    def div(self, array1: Array | float, array2: Array | float) -> Array:
+        return Array(np.divide(_unwrap(array1), _unwrap(array2)))
 
-    def idiv[T: Array](self, array1: T, array2: Array) -> T:
-        value = _unwrap(array1)
-        value /= _unwrap(array2)
+    def idiv[T: Array](self, array1: T, array2: Array | float) -> T:
+        array1.value /= _unwrap(array2)
         return array1
 
     def pow(self, array: Array, p: float) -> Array:
-        return _wrap(np.power(_unwrap(array), p))
+        return Array(np.power(array.value, p))
 
     def ipow[T: Array](self, array: T, p: float) -> T:
-        value = _unwrap(array)
-        value **= p
+        array.value **= p
         return array
 
     def negative(self, array: Array) -> Array:
-        return _wrap(np.negative(_unwrap(array)))
+        return Array(np.negative(array.value))
 
     def absolute(self, array: Array) -> Array:
-        return _wrap(np.abs(_unwrap(array)))
+        return Array(np.abs(array.value))
 
     def sqrt(self, array: Array) -> Array:
-        return _wrap(np.sqrt(_unwrap(array)))
+        return Array(np.sqrt(array.value))
 
     # Operators
 
     def sign(self, array: Array) -> Array:
-        return _wrap(np.sign(_unwrap(array)))
+        return Array(np.sign(array.value))
 
-    def maximum(self, array1: Array, array2: Array) -> Array:
-        return _wrap(np.maximum(_unwrap(array1), _unwrap(array2)))
+    def maximum(self, array1: Array | float, array2: Array | float) -> Array:
+        return Array(np.maximum(_unwrap(array1), _unwrap(array2)))
 
     def argmax(self, array: Array, dim: int | None = None, keepdims: bool = False) -> Array:
-        return _wrap(np.argmax(_unwrap(array), axis=dim, keepdims=keepdims))
+        return Array(np.argmax(array.value, axis=dim, keepdims=keepdims))
 
     def argmin(self, array: Array, dim: int | None = None, keepdims: bool = False) -> Array:
-        return _wrap(np.argmin(_unwrap(array), axis=dim, keepdims=keepdims))
+        return Array(np.argmin(array.value, axis=dim, keepdims=keepdims))
 
     def set_item(self, array: Array, key: ArrayKey, value: Array) -> None:
-        _unwrap(array)[key] = _unwrap(value)
+        array.value[key] = value.value
 
     def get_item(self, array: Array, key: ArrayKey) -> Array:
-        return _wrap(_unwrap(array)[key])
+        return Array(array.value[key])
 
     # RNG
 
@@ -227,18 +224,16 @@ class NumpyBackend(_Backend):
             np.random.set_state(state["numpy_legacy_state"])  # noqa: NPY002
 
     def normal(self, mean: float = 0.0, std: float = 1.0, shape: tuple[int, ...] = ()) -> Array:
-        return _wrap(self._rng.normal(loc=mean, scale=std, size=shape))
+        return Array(self._rng.normal(loc=mean, scale=std, size=shape))
 
     def uniform(self, low: float = 0.0, high: float = 1.0, shape: tuple[int, ...] = ()) -> Array:
-        return _wrap(self._rng.uniform(low=low, high=high, size=shape))
+        return Array(self._rng.uniform(low=low, high=high, size=shape))
 
     def normal_like(self, array: Array, mean: float = 0.0, std: float = 1.0) -> Array:
-        value = _unwrap(array)
-        return _wrap(self._rng.normal(loc=mean, scale=std, size=value.shape))
+        return Array(self._rng.normal(loc=mean, scale=std, size=array.value.shape))
 
     def uniform_like(self, array: Array, low: float = 0.0, high: float = 1.0) -> Array:
-        value = _unwrap(array)
-        return _wrap(self._rng.uniform(low=low, high=high, size=value.shape))
+        return Array(self._rng.uniform(low=low, high=high, size=array.value.shape))
 
     def choice(self, array: Array, size: int, replace: bool = True) -> Array:
-        return _wrap(self._rng.choice(_unwrap(array), size=size, replace=replace))
+        return Array(self._rng.choice(array.value, size=size, replace=replace))

@@ -21,6 +21,7 @@ Typical usage::
 from ._backend_manager import (
     set_backend,
 )
+from ._decorators import autodecorate_cost_method
 from ._iop import (
     absolute,
     add,
@@ -82,6 +83,7 @@ __all__ = [
     "argmax",
     "argmin",
     "astype",
+    "autodecorate_cost_method",
     "choice",
     "copy",
     "device_of",

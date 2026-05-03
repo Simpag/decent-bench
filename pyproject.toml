@@ -59,8 +59,26 @@ sphinx-tools = [
 
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-mypyc"]
 build-backend = "hatchling.build"
+
+# Compile hot-path modules with mypyc when building wheels. End users installing from
+# a wheel get a precompiled .so; ``pip install -e .`` and source builds also run this
+# (a C compiler is required). The ``.py`` source remains shipped alongside the .so so
+# Python keeps a fallback if the extension fails to import.
+[tool.hatch.build.targets.wheel.hooks.mypyc]
+dependencies = ["hatch-mypyc"]
+# Compile the Array wrapper plus the entire iop2 package as one mypyc group: keeping
+# them in a single compilation unit means cross-module calls (Array → backend, iop
+# function → backend) are direct compiled-to-compiled calls. New framework backends
+# get picked up automatically — no edits needed here. ``--ignore-missing-imports``
+# treats torch/jax/tensorflow types as ``Any`` when those packages aren't in the
+# build environment; the wrapper-side boundary cost is still removed.
+include = [
+  "decent_bench/utils/array/_array.py",
+  "decent_bench/utils/interoperability_2",
+]
+mypy-args = ["--ignore-missing-imports"]
 
 [tool.tox]
 envlist = ["dev", "mypy", "pytest", "ruff", "sphinx"]
@@ -96,6 +114,34 @@ commands = [
 description = "Run mypy (static type checker)"
 deps = [".[dev]", ".[dev-cpu]", "git+https://github.com/microsoft/python-type-stubs.git@main"]
 commands = [["mypy", "decent_bench"]]
+
+[tool.tox.env.clean-mypyc]
+description = "Remove mypyc-compiled artifacts so Python imports the .py source again (use during dev iteration)"
+skip_install = true
+deps = []
+commands = [
+  ["python", "-c", "import pathlib; ps = list(pathlib.Path('.').glob('decent_bench/**/*.so')) + list(pathlib.Path('.').glob('*__mypyc.cpython-*.so')); [p.unlink() for p in ps]; print('removed', len(ps), 'compiled artifact(s)')"],
+]
+
+[tool.tox.env.mypyc]
+description = "Compile hot-path modules in place with mypyc (drops .so files alongside the .py source)"
+skip_install = true
+deps = ["mypy", "numpy", "setuptools"]
+# First command clears any stale shared-runtime ``.so`` at the project root from a
+# previous compile (its name is hash-derived from the file list, so changing inputs
+# leaves orphans); second command compiles the Array module + entire iop2 package as
+# one group so new backends are picked up automatically. ``_abstracts`` is excluded
+# because mypyc-compiling the ABCs would force concrete (decorated) backends to also
+# be extension classes, which conflicts with the ``@register_backend`` decorator.
+commands = [
+  ["python", "-c", "import pathlib; [p.unlink() for p in pathlib.Path('.').glob('*__mypyc.cpython-*.so')]"],
+  ["python", "-m", "mypyc",
+    "--ignore-missing-imports",
+    "--exclude", "interoperability_2/_abstracts",
+    "decent_bench/utils/array/_array.py",
+    "decent_bench/utils/interoperability_2",
+  ],
+]
 
 [tool.tox.env.pytest]
 description = "Run pytest (test executor)"

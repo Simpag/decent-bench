@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 from numpy.typing import NDArray
 
-from decent_bench.utils.array import Array
+from decent_bench.utils.array_old import Array
 from decent_bench.utils.types import ArrayKey, SupportedArrayTypes, SupportedDevices, SupportedFrameworks
 
 from ._helpers import _return_array, device_to_framework_device, framework_device_of_array

@@ -44,7 +44,7 @@ To make sure all GitHub status checks pass, simply run :code:`tox`. You can also
     tox -e ruff       # find formatting and style issues
     tox -e sphinx     # rebuild documentation
 
-Note: Running :code:`tox` commands can take several minutes and may require admin privileges. 
+Note: Running :code:`tox` commands can take several minutes and may require admin privileges.
 If you have mypy addon installed in your IDE, you can use it to get instant feedback on typing issues while coding.
 If mypy fails with ``KeyError: 'setter_type'``, delete the ``.mypy_cache`` folder in the project root.
 
@@ -61,6 +61,55 @@ Tools can also be used directly (instead of via tox) after activating the dev en
 To verify that doc changes look good, use an html previewer such as
 `Live Preview <https://marketplace.visualstudio.com/items?itemName=ms-vscode.live-server>`_.
 If you are running :code:`pytest test` while using ``WSL`` on Windows and it starts to randomly fail (or if its really slow), restart your ``WSL`` instance.
+
+
+
+Compiled hot path (mypyc)
+-------------------------
+The :class:`~decent_bench.utils.array.Array` wrapper and the entire
+:mod:`~decent_bench.utils.interoperability_2` package are compiled to C extensions with
+`mypyc <https://mypyc.readthedocs.io/>`_ at wheel-build time, so end users get the
+speed-up automatically when installing from a wheel. During development you can
+manage the compiled artifacts with two tox environments:
+
+.. code-block::
+
+    tox -e mypyc          # compile in-place (drops .so files alongside the .py source)
+    tox -e clean-mypyc    # remove compiled .so files so Python loads the .py source again
+
+When both ``module.py`` and ``module.cpython-*.so`` exist in the same directory, Python
+imports the ``.so``. This means edits to a compiled module will not take effect until
+either ``tox -e mypyc`` is rerun or ``tox -e clean-mypyc`` is invoked. A typical
+edit-test-edit cycle therefore looks like:
+
+1. Run :code:`tox -e clean-mypyc` once at the start of the session.
+2. Edit, run, repeat (Python loads the ``.py`` source directly — no rebuild needed).
+3. When measuring performance, run :code:`tox -e mypyc` to recompile and re-bench.
+
+Compilation takes ~25 s from a clean state. The build emits a hash-named shared-runtime
+file (``<hash>__mypyc.cpython-*.so``) at the project root that holds helpers used by
+every compiled module; it must sit on ``sys.path`` because the compiled modules import
+it by bare name. The file is gitignored.
+
+
+
+Performance tools
+-----------------
+The :code:`benchmarks/` directory contains scripts to measure wrapper overhead and
+profile the hot path:
+
+.. code-block::
+
+    PYTHONPATH=. python benchmarks/array_overhead.py    # legacy vs new Array, all 4 frameworks
+    PYTHONPATH=. python benchmarks/profile_array.py     # layer-by-layer timing of the Array path
+
+:code:`profile_array.py` reports the cost of each layer (``.value`` access, ``Array()``
+construction, raw framework op, full operator dispatch) so you can see whether
+wrapper-level Python overhead or the actual framework op dominates at a given array
+size. cProfile is largely blind to mypyc-compiled methods (they appear as single C
+calls), which is why this script does explicit timeit-based timing instead. Compare
+output from ``tox -e mypyc`` followed by the profile against ``tox -e clean-mypyc``
+followed by the same profile to see what compilation buys.
 
 
 

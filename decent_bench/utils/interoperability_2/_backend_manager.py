@@ -4,7 +4,8 @@ import importlib
 from collections.abc import Callable, Iterable
 from contextvars import ContextVar
 
-from decent_bench.utils.types import SupportedFrameworks
+from decent_bench.utils.array._array import _NoBackendSet, _set_active_backend
+from decent_bench.utils.types import SupportedDevices, SupportedFrameworks
 
 from ._abstracts._backend import _Backend
 
@@ -14,13 +15,18 @@ _BACKEND_ALIASES: dict[str, SupportedFrameworks] = {}
 _ACTIVE_BACKEND: ContextVar[SupportedFrameworks | None] = ContextVar("decent_bench.iop2.active_backend", default=None)
 
 
-def set_backend(backend: SupportedFrameworks | str) -> None:
+def set_backend(
+    backend: SupportedFrameworks | str,
+    device: SupportedDevices | str = SupportedDevices.CPU,
+) -> None:
     """
-    Set the active backend for the current execution context.
+    Set the active backend (and target device) for the current execution context.
 
-    The first call binds the backend; subsequent calls must use the same backend or a
-    :class:`RuntimeError` is raised. This single-backend invariant lets the rest of the
-    interoperability layer skip framework dispatch and isinstance checks.
+    The first call binds both the backend and the device; subsequent calls must use the
+    same backend *and* the same device or a :class:`RuntimeError` is raised. This
+    single-backend, single-device invariant lets the rest of the interoperability layer
+    skip framework dispatch and isinstance checks, and lets backends construct array
+    creation routines bound to a specific accelerator.
 
     Backend modules are auto-imported on demand: the first call to ``set_backend("pytorch")``
     triggers import of ``decent_bench.utils.interoperability_2._pytorch``, whose ``__init__``
@@ -31,22 +37,24 @@ def set_backend(backend: SupportedFrameworks | str) -> None:
             ``"numpy"``, ``"pytorch"``), or any alias declared by the backend at
             registration time. Aliases are only resolvable after the backend module has
             been loaded; pass the canonical name on the first call to trigger autoload.
+        device: Target accelerator. Accepts a :class:`SupportedDevices` value or its
+            string equivalent (``"cpu"``, ``"gpu"``, ``"mps"``). Defaults to CPU. The
+            backend's array-creation methods produce arrays on this device by default.
+
+    Note:
+        Raises :class:`ImportError` if the backend module cannot be imported (e.g. due to
+        a missing optional dependency); the failure originates from :func:`_auto_import`.
 
     Raises:
-        ImportError: If the backend module cannot be imported (e.g. due to a missing dependency).
-        RuntimeError: If a different backend is already active in this context.
+        RuntimeError: If a different backend (or the same backend with a different device)
+            is already active in this context.
 
     """
     requested = _normalize(backend)
+    requested_device = device if isinstance(device, SupportedDevices) else SupportedDevices(device)
 
     if requested not in _BACKEND_REGISTRY:
-        try:
-            _auto_import(requested)
-        except ImportError as exc:
-            raise ImportError(
-                f"Failed to import the backend module for '{requested.value}'. Ensure the "
-                "corresponding backend package is installed and importable."
-            ) from exc
+        _auto_import(requested)
 
     current = _ACTIVE_BACKEND.get()
     if current is not None and current != requested:
@@ -55,8 +63,42 @@ def set_backend(backend: SupportedFrameworks | str) -> None:
             "A single execution context may only use one backend."
         )
 
+    cached = _BACKEND_INSTANCES.get(requested)
+    if cached is None:
+        cls = _BACKEND_REGISTRY[requested]
+        cached = cls(device=requested_device)
+        _BACKEND_INSTANCES[requested] = cached
+    elif cached.device != requested_device:
+        raise RuntimeError(
+            f"Backend '{requested.value}' already configured with device "
+            f"'{cached.device.value}', cannot reconfigure to '{requested_device.value}'."
+        )
+
     if current is None:
         _ACTIVE_BACKEND.set(requested)
+        # Cache the backend on each module that has its own ``_BACKEND`` slot (Array,
+        # iop free functions, iop RNG) so dispatch is a single global-name load
+        # instead of a ContextVar + dict lookup per call.
+        _notify_backend_subscribers(cached)
+
+
+def _notify_backend_subscribers(backend: _Backend) -> None:
+    """
+    Push the active backend into every module that caches it as a module global.
+
+    Iop modules are imported lazily here (rather than at top of file) to avoid the
+    circular ``_backend_manager → _iop → _backend_manager`` import chain that would
+    otherwise occur at module load time.
+    """
+    _set_active_backend(backend)
+    from decent_bench.utils.interoperability_2._iop._functions import (  # noqa: PLC0415
+        _set_active_backend as _iop_func_set,
+    )
+    from decent_bench.utils.interoperability_2._iop._rng import (  # noqa: PLC0415
+        _set_active_backend as _iop_rng_set,
+    )
+    _iop_func_set(backend)
+    _iop_rng_set(backend)
 
 
 def get_backend() -> _Backend:
@@ -117,6 +159,7 @@ def reset_backend() -> None:
     """
     _ACTIVE_BACKEND.set(None)
     _BACKEND_INSTANCES.clear()
+    _notify_backend_subscribers(_NoBackendSet())  # type: ignore[arg-type]
 
 
 def _register_alias(alias: str, backend: SupportedFrameworks) -> None:
@@ -156,6 +199,13 @@ def _instantiate(backend: SupportedFrameworks) -> _Backend:
 
 
 def _auto_import(backend: SupportedFrameworks) -> None:
+    """
+    Import the backend's package so its registration side-effect runs.
+
+    Raises:
+        ImportError: If the backend module cannot be imported.
+
+    """
     current_module = __name__.rsplit(".", 1)[0]
     module_name = current_module + f"._{backend.value}"
     try:

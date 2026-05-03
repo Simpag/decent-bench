@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from decent_bench.utils.array import Array
+from decent_bench.utils.array_old import Array
 from decent_bench.utils.types import SupportedArrayTypes, SupportedDevices, SupportedFrameworks
 
 from ._imports_types import _jnp_types, _np_types, _tf_types, _torch_types, jax, jnp, tf, torch

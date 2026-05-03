@@ -4,7 +4,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-from decent_bench.utils.array import Array
+from decent_bench.utils.array_old import Array
 from decent_bench.utils.logger import LOGGER
 from decent_bench.utils.types import SupportedDevices, SupportedFrameworks
 
